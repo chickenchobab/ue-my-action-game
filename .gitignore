@@ -1,0 +1,13 @@
+/.vs
+/.vscode
+**/Assets
+**/Binaries
+**/Content
+**/DerivedDataCache
+**/Intermediate
+**/Saved
+Assassins.code-workspace
+Assassins.uproject
+Assassins.sln
+.vsconfig
+*.pdb
