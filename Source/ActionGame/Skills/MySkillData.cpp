@@ -10,29 +10,21 @@ void UMySkillData::InitWithAvatar(AActor* NewAvatarActor)
 	AvatarActor = NewAvatarActor;
 
 	ExecutionGrantCount = !bComboOnly;
-	bIsActive = false;
+	ActiveCount = 0;
+	CurrentMontageIndex = 0;
 }
 
-void UMySkillData::TryExecuteSkill(AActor* Instigator)
+void UMySkillData::TryExecuteSkill()
 {
-	check(Instigator);
+	check(AvatarActor.IsValid());
 
-	if (CanExecuteSkill(Instigator))
+	if (CanExecuteSkill())
 	{
 		UE_LOG(LogTemp, Display, TEXT("Execute skill"));
 
-		bIsActive = true;
+		++ActiveCount;
 		CommitCostsAndCooldown();
-		ExecuteSkill(Instigator);
-
-		FTimerHandle TimerHandle;
-		Instigator->GetWorld()->GetTimerManager().SetTimer(
-			TimerHandle,
-			this,
-			&ThisClass::OnSkillEnd,
-			3.0f,
-			false
-		);
+		ExecuteSkill();
 	}
 }
 
@@ -43,13 +35,18 @@ void UMySkillData::HandleSkillReleased()
 
 void UMySkillData::EnableExecution(float Duration)
 {
+	if (!AvatarActor.IsValid())
+	{
+		return;
+	}
+
 	++ExecutionGrantCount;
 
 	if (Duration > 0.0f)
 	{
 		FTimerHandle TimerHandle;
 
-		GetWorld()->GetTimerManager().SetTimer(
+		AvatarActor.Get()->GetWorld()->GetTimerManager().SetTimer(
 			TimerHandle,
 			[this]()
 			{
@@ -64,9 +61,9 @@ void UMySkillData::EnableExecution(float Duration)
 	}
 }
 
-bool UMySkillData::CanExecuteSkill(AActor* Instigator)
+bool UMySkillData::CanExecuteSkill()
 {
-	if (InstancingPolicy != ESkillInstancingPolicy::PerExecution && bIsActive)
+	if (InstancingPolicy != ESkillInstancingPolicy::PerExecution && IsSkillActive())
 	{
 		return false;
 	}
@@ -76,7 +73,7 @@ bool UMySkillData::CanExecuteSkill(AActor* Instigator)
 		return false;
 	}
 
-	if (AMyCharacter* InstigatorCharacter = Cast<AMyCharacter>(Instigator))
+	if (AMyCharacter* InstigatorCharacter = Cast<AMyCharacter>(AvatarActor))
 	{
 		if (InstigatorCharacter->GetCombatComponent()->GetCurrentMana() < Cost)
 		{
@@ -97,12 +94,29 @@ void UMySkillData::CommitCostsAndCooldown()
 void UMySkillData::OnSkillEnd()
 {
 	UE_LOG(LogTemp, Display, TEXT("Skill ended"));
-	bIsActive = false;
+	--ActiveCount;
 }
 
-UMyCombatComponent* UMySkillData::GetCombatComponentFromInstigator(AActor* Instigator) const
+void UMySkillData::PlaySkillMontage()
 {
-	if (AMyCharacter* InstigatorCharacter = Cast<AMyCharacter>(Instigator))
+	if (CurrentMontageIndex >= SkillMontages.Num())
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetAnimInstanceFromAvatarActor();
+	AnimInstance->Montage_Play(SkillMontages[CurrentMontageIndex]);
+
+	FOnMontageEnded EndDelegate = FOnMontageEnded::CreateUObject(this, &ThisClass::OnSkillMontageEnded);
+	AnimInstance->Montage_SetEndDelegate(EndDelegate, SkillMontages[CurrentMontageIndex]);
+
+	FOnMontageBlendingOutStarted BlendOutDelegate = FOnMontageBlendingOutStarted::CreateUObject(this, &ThisClass::OnSkillMontageBlendingOutStarted);
+	AnimInstance->Montage_SetBlendingOutDelegate(BlendOutDelegate, SkillMontages[CurrentMontageIndex]);
+}
+
+UMyCombatComponent* UMySkillData::GetCombatComponentFromAvatarActor() const
+{
+	if (AMyCharacter* InstigatorCharacter = Cast<AMyCharacter>(AvatarActor))
 	{
 		return InstigatorCharacter->GetCombatComponent();
 	}
@@ -110,9 +124,9 @@ UMyCombatComponent* UMySkillData::GetCombatComponentFromInstigator(AActor* Insti
 	return nullptr;
 }
 
-UAnimInstance* UMySkillData::GetAnimInstanceFromInstigator(AActor* Instigator) const
+UAnimInstance* UMySkillData::GetAnimInstanceFromAvatarActor() const
 {
-	if (AMyCharacter* InstigatorCharacter = Cast<AMyCharacter>(Instigator))
+	if (AMyCharacter* InstigatorCharacter = Cast<AMyCharacter>(AvatarActor))
 	{
 		return InstigatorCharacter->GetMesh()->GetAnimInstance();
 	}

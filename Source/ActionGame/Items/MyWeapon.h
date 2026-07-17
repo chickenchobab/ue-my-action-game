@@ -6,6 +6,7 @@
 #include "MyWeapon.generated.h"
 
 class UMySkillData;
+class USkillData_Attack;
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAttackHit, AActor*, TArray<AActor*>&);
 
@@ -45,38 +46,93 @@ public:
 	virtual void Equip(USceneComponent* NewParent, const FName& OverrideSocket = NAME_None);
 	virtual void UnEquip();
 
-	//FORCEINLINE void Register_OnAttackHit(FOnAttackHit::FDelegate&& Delegate);
+	void InitWeaponForAttack(USkillData_Attack* Skill, const UAnimMontage* SkillMontage);
+	void OnAttackBegin();
+	void OnAttackEnd();
 
 	FORCEINLINE UMySkillData* GetSkillData(EWeaponSkillType SkillType) const { return SkillSet.FindRef(SkillType); }
 
 protected:
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
-	//virtual void Tick(float DeltaSeconds) override;
+	virtual void Tick(float DeltaSeconds) override;
 
 protected:
 
 	UPROPERTY(VisibleDefaultsOnly)
-	USceneComponent* GripRoot;
+	TObjectPtr<USceneComponent> GripRoot;
 
 	UPROPERTY(VisibleDefaultsOnly)
-	UStaticMeshComponent* WeaponMesh;
+	TObjectPtr<UStaticMeshComponent> WeaponMesh;
 
 	FName DefaultAttachedSocket;
 
 	UPROPERTY(EditDefaultsOnly)
 	TMap<EWeaponSkillType, TObjectPtr<UMySkillData>> SkillSet;
 
+	USkillData_Attack* CurrentActiveSkill;
+
 private:
 
 	UPROPERTY(VisibleDefaultsOnly)
-	class USphereComponent* PickupCollision;
+	TObjectPtr<class USphereComponent> PickupCollision;
 
 	bool bIsEquipped : 1;
 
-	bool bIsAttacking : 1;
+public:
 
 	FOnAttackHit OnAttackHit;
 
-	TArray<FName> WeaponMeshSocketNames;
+private:
+
+	bool bIsAttacking : 1;
+
+	TArray<FName> WeaponSockets;
+
+	// 공격 시작부터 종료까지의 hit 확인을 위해 공통적으로 참조되는 context
+	struct FHitCheckContext
+	{
+		const UAnimMontage* Montage = nullptr;
+		const UAnimSequence* AnimSequence = nullptr;
+		const FAnimMontageInstance* MontageInstance = nullptr;
+
+		USkeletalMeshComponent* OwnerCharacterMesh = nullptr;
+		FName GripBoneName = NAME_None;
+		int32 GripBoneIndex = INDEX_NONE;
+
+		FBoneContainer BoneContainer;
+		TArray<FTransform> SocketToGripBoneTransforms;
+
+		TArray<AActor*> AlreadyHitActors;
+
+		FORCEINLINE bool IsValid() const;
+		FORCEINLINE void Reset();
+	} HitCheckContext;
+
+	struct FWeaponHitQuery
+	{
+		FVector Tip_Old, Tip_New;
+		FVector Base_Old, Base_New;
+		FBox Box;
+	};
+
+	struct FSocketSamples
+	{
+		FName SocketName;
+		TArray<FVector> Locations;
+	};
+
+private:
+
+	FORCEINLINE void SampleSocketPositions(TArray<FSocketSamples>& OutSamples);
+
+	FORCEINLINE bool IntersectQuadWithCapsule(const FWeaponHitQuery& Query, const FVector& CapsuleBase, const FVector& CapsuleTop, float Radius);
+	FORCEINLINE bool IntersectTriangleWithCapsule(const FVector& V0, const FVector& V1, const FVector& V2, const FVector& P0, const FVector& P1, float R);
+
+	FORCEINLINE void InitHitCheckContext(const UAnimMontage* Montage);
+	FORCEINLINE void BuildBoneContainer(USkeletalMesh* SkelMesh);
+
+	FORCEINLINE FBox GetBoxFromHitQuery(const FWeaponHitQuery& Query);
+	FORCEINLINE void GetCandidatesByBoxOverlap(TArray<FOverlapResult>& OutCandidates, const FBox& InBox, FCollisionQueryParams& QueryParams, FCollisionObjectQueryParams& ObjectQueryParams);
+	
 };

@@ -39,7 +39,7 @@ struct FComboLinkOption
  * 
  */
 UCLASS(BlueprintType)
-class ACTIONGAME_API UMySkillData : public UPrimaryDataAsset
+class ACTIONGAME_API UMySkillData : public UDataAsset
 {
 	GENERATED_BODY()
 
@@ -57,7 +57,7 @@ public:
 	// TODO: Anim Layer
 
 	UPROPERTY(EditDefaultsOnly)
-	TObjectPtr<UAnimMontage> SkillMontage = nullptr;
+	TArray<TObjectPtr<UAnimMontage>> SkillMontages;
 
 	UPROPERTY(EditDefaultsOnly)
 	float Cooldown = 1.0f;
@@ -81,35 +81,41 @@ public:
 
 public:
 
-	virtual void InitWithAvatar(AActor* WeaponOwner);
+	virtual void InitWithAvatar(AActor* NewAvatarActor);
+	virtual void InitWithItem(AActor* OwningItem) {}
 	virtual void HandleSkillReleased();
 
-	void TryExecuteSkill(AActor* Instigator);
+	void TryExecuteSkill();
 	
-	FORCEINLINE bool IsSkillActive() const { return bIsActive; }
+	FORCEINLINE bool IsSkillActive() const { return ActiveCount > 0; }
 
 	// TODO: for combo skill
 	FORCEINLINE	void EnableExecution(float Duration);
 
-
 protected:
 
-	virtual bool CanExecuteSkill(AActor* Instigator);
+	virtual bool CanExecuteSkill();
 	virtual void CommitCostsAndCooldown();
-	virtual void ExecuteSkill(AActor* Instigator) {}
+	virtual void ExecuteSkill() {}
 	virtual void OnSkillEnd();
 
-	UMyCombatComponent* GetCombatComponentFromInstigator(AActor* Instigator) const;
-	UAnimInstance* GetAnimInstanceFromInstigator(AActor* Instigator) const;
+	void PlaySkillMontage();
+	virtual void OnSkillMontageEnded(UAnimMontage* Montage, bool bInterrupted) {}
+	virtual void OnSkillMontageBlendingOutStarted(UAnimMontage* Montage, bool bInterrupted) {}
+
+	UMyCombatComponent* GetCombatComponentFromAvatarActor() const;
+	UAnimInstance* GetAnimInstanceFromAvatarActor() const;
 
 protected:
 
 	UPROPERTY()
 	TWeakObjectPtr<AActor> AvatarActor;
 
+	int32 CurrentMontageIndex = 0;
+
 private:
 
-	int32 ExecutionGrantCount = 1;
+	uint32 ExecutionGrantCount = 1;
 
-	bool bIsActive = false;
+	uint32 ActiveCount = 0;
 };

@@ -68,7 +68,7 @@ void UMyCombatComponent::OnWeaponSkillPressed(EWeaponSkillType SkillType)
 		if (UMySkillData* SkillData = CurrentWeapon->GetSkillData(SkillType))
 		{
 			// TODO: skill batching
-			SkillData->TryExecuteSkill(GetOwner());
+			SkillData->TryExecuteSkill();
 		}
 	}
 }
