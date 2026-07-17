@@ -21,16 +21,19 @@ void UMySkillData::TryExecuteSkill()
 	if (CanExecuteSkill())
 	{
 		UE_LOG(LogTemp, Display, TEXT("Execute skill"));
-
 		++ActiveCount;
 		CommitCostsAndCooldown();
 		ExecuteSkill();
 	}
 }
 
+void UMySkillData::CancelSkill()
+{
+	OnSkillEnd(true);
+}
+
 void UMySkillData::HandleSkillReleased()
 {
-	UE_LOG(LogTemp, Display, TEXT("Skill released"));
 }
 
 void UMySkillData::EnableExecution(float Duration)
@@ -91,7 +94,7 @@ void UMySkillData::CommitCostsAndCooldown()
 	// TODO
 }
 
-void UMySkillData::OnSkillEnd()
+void UMySkillData::OnSkillEnd(bool bCanceled)
 {
 	UE_LOG(LogTemp, Display, TEXT("Skill ended"));
 	--ActiveCount;

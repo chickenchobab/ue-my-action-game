@@ -145,25 +145,6 @@ void AMyWeapon::Tick(float DeltaSeconds)
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning,
-		TEXT("Frame=%llu Pos=%.3f Socket=%s"),
-		GFrameCounter,
-		HitCheckContext.MontageInstance->GetPosition(),
-		*WeaponMesh->GetSocketLocation(WeaponSockets[0]).ToString());
-
-	for (int i = 0; i < WeaponSockets.Num(); ++i)
-	DrawDebugSphere(
-		GetWorld(),
-		WeaponMesh->GetSocketLocation(WeaponSockets[i]),
-		5.0f,               // Radius
-		12,                 // Segments
-		FColor::Red,       // Color
-		true,              // Persistent
-		0.1f,               // Lifetime
-		0,                  // Depth Priority
-		1.5f                // Thickness
-	);
-
 	FCollisionQueryParams QueryParams;
 	QueryParams.bTraceComplex = false;
 
@@ -205,7 +186,7 @@ void AMyWeapon::Tick(float DeltaSeconds)
 
 					if (IntersectQuadWithCapsule(Query, CapsuleBase, CapsuleTop, Radius))
 					{
-						HitCheckContext.AlreadyHitActors.Add(CandidateActor);
+						HitCheckContext.AlreadyHitActors.AddUnique(CandidateActor);
 					}
 				}
 			}
@@ -215,6 +196,7 @@ void AMyWeapon::Tick(float DeltaSeconds)
 	if (!HitCheckContext.AlreadyHitActors.IsEmpty())
 	{
 		OnAttackHit.Broadcast(GetOwner(), HitCheckContext.AlreadyHitActors);
+		HitCheckContext.AlreadyHitActors.Empty();
 	}
 }
 
@@ -261,18 +243,7 @@ void AMyWeapon::SampleSocketPositions(TArray<FSocketSamples>& OutSamples)
 		for (int32 Socket = 0; Socket < WeaponSockets.Num(); ++Socket)
 		{
 			const FTransform SocketWorld = HitCheckContext.SocketToGripBoneTransforms[Socket] * BoneComponent * HitCheckContext.OwnerCharacterMesh->GetComponentToWorld();
-			
-			DrawDebugSphere(
-				GetWorld(),
-				SocketWorld.GetLocation(),
-				2.0f,               // Radius
-				12,                 // Segments
-				FColor::Blue,       // Color
-				true,               // Persistent
-				0.1f,               // Lifetime
-				0,                  // Depth Priority
-				1.5f                // Thickness
-			);
+
 			OutSamples[Socket].Locations.Add(SocketWorld.GetLocation());
 		}
 	}

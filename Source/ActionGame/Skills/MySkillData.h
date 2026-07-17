@@ -86,6 +86,7 @@ public:
 	virtual void HandleSkillReleased();
 
 	void TryExecuteSkill();
+	void CancelSkill();
 	
 	FORCEINLINE bool IsSkillActive() const { return ActiveCount > 0; }
 
@@ -97,7 +98,7 @@ protected:
 	virtual bool CanExecuteSkill();
 	virtual void CommitCostsAndCooldown();
 	virtual void ExecuteSkill() {}
-	virtual void OnSkillEnd();
+	virtual void OnSkillEnd(bool bCanceled);
 
 	void PlaySkillMontage();
 	virtual void OnSkillMontageEnded(UAnimMontage* Montage, bool bInterrupted) {}

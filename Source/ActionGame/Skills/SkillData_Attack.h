@@ -18,6 +18,7 @@ public:
 	virtual void InitWithAvatar(AActor* NewAvatar) override;
 	virtual bool CanExecuteSkill() override;
 	virtual void ExecuteSkill() override;
+	virtual void OnSkillEnd(bool bCanceled) override;
 
 	virtual void OnSkillMontageEnded(UAnimMontage* Montage, bool bInterrupted) override;
 	virtual void OnSkillMontageBlendingOutStarted(UAnimMontage* Montage, bool bInterrupted) override;
@@ -29,9 +30,6 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly)
 	float AttackComboWindow = 2.0f;
-
-	UPROPERTY(EditDefaultsOnly)
-	float AttackComboEndDelay = 2.0f;
 
 	FTimerHandle ComboWindowTimerHandle;
 	bool bInAttackComboWindow = false;

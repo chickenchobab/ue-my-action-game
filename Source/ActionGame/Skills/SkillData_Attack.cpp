@@ -18,14 +18,16 @@ void USkillData_Attack::InitWithAvatar(AActor* NewAvatar)
 	Super::InitWithAvatar(NewAvatar);
 
 	bInAttackComboWindow = false;
-	ComboWindowTimerHandle.Invalidate();
+	AvatarActor.Get()->GetWorld()->GetTimerManager().ClearTimer(ComboWindowTimerHandle);
 }
 
 bool USkillData_Attack::CanExecuteSkill()
 {
+	// The montage end callback(causing deactivation) may be invoked before the attack end anim notify,
+	// so check activity here to prevent from executing before the montage update
 	if (bInAttackComboWindow)
 	{
-		return true;
+		return IsSkillActive();
 	}
 
 	return Super::CanExecuteSkill();
@@ -34,6 +36,7 @@ bool USkillData_Attack::CanExecuteSkill()
 void USkillData_Attack::ExecuteSkill()
 {	
 	bInAttackComboWindow = false;
+	AvatarActor.Get()->GetWorld()->GetTimerManager().ClearTimer(ComboWindowTimerHandle);
 
 	PlaySkillMontage();
 	if (CurrentMontageIndex >= SkillMontages.Num())
@@ -48,9 +51,20 @@ void USkillData_Attack::ExecuteSkill()
 	}
 }
 
+void USkillData_Attack::OnSkillEnd(bool bCanceled)
+{
+	if (bCanceled)
+	{
+		bInAttackComboWindow = false;
+		AvatarActor.Get()->GetWorld()->GetTimerManager().ClearTimer(ComboWindowTimerHandle);
+	}
+
+	Super::OnSkillEnd(bCanceled);
+}
+
 void USkillData_Attack::OnSkillMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	OnSkillEnd();
+	OnSkillEnd(false);
 }
 
 void USkillData_Attack::OnSkillMontageBlendingOutStarted(UAnimMontage* Montage, bool bInterrupted)
@@ -59,12 +73,11 @@ void USkillData_Attack::OnSkillMontageBlendingOutStarted(UAnimMontage* Montage, 
 
 void USkillData_Attack::OnAttackEnd()
 {
+	UE_LOG(LogTemp, Display, TEXT("Attack end"));
 	if (!AvatarActor.IsValid())
 	{
 		return;
 	}
-
-	ComboWindowTimerHandle.Invalidate();
 
 	if (CurrentMontageIndex == SkillMontages.Num() - 1)
 	{
@@ -74,7 +87,6 @@ void USkillData_Attack::OnAttackEnd()
 	{
 		CurrentMontageIndex = CurrentMontageIndex + 1;
 		bInAttackComboWindow = true;
-
 		AvatarActor.Get()->GetWorld()->GetTimerManager().SetTimer(
 			ComboWindowTimerHandle,
 			[this]() {
