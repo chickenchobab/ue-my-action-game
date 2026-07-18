@@ -5,6 +5,8 @@
 #include "Skills/MySkillData.h"
 #include "SkillData_Attack.generated.h"
 
+struct FInputActionInstance;
+
 /**
  * 
  */
@@ -17,7 +19,7 @@ public:
 	virtual void InitWithItem(AActor* OwningItem) override;
 	virtual void InitWithAvatar(AActor* NewAvatar) override;
 	virtual bool CanExecuteSkill() override;
-	virtual void ExecuteSkill() override;
+	virtual void ExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector) override;
 	virtual void OnSkillEnd(bool bCanceled) override;
 
 	virtual void OnSkillMontageEnded(UAnimMontage* Montage, bool bInterrupted) override;
@@ -33,4 +35,6 @@ protected:
 
 	FTimerHandle ComboWindowTimerHandle;
 	bool bInAttackComboWindow = false;
+
+	FRotator CachedRotationRate = FRotator(ForceInit);
 };

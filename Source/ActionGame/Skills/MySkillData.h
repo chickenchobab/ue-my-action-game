@@ -16,6 +16,8 @@ enum class ESkillInstancingPolicy : uint8
 
 class UMyCombatComponent;
 class UInputAction;
+struct FInputActionInstance;
+class UEnhancedPlayerInput;
 
 USTRUCT(BlueprintType)
 struct FComboLinkOption
@@ -83,9 +85,9 @@ public:
 
 	virtual void InitWithAvatar(AActor* NewAvatarActor);
 	virtual void InitWithItem(AActor* OwningItem) {}
-	virtual void HandleSkillReleased();
+	virtual void HandleSkillReleased(const FInputActionInstance& Instance, const FVector2D& MovementVector);
 
-	void TryExecuteSkill();
+	void TryExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector);
 	void CancelSkill();
 	
 	FORCEINLINE bool IsSkillActive() const { return ActiveCount > 0; }
@@ -97,7 +99,7 @@ protected:
 
 	virtual bool CanExecuteSkill();
 	virtual void CommitCostsAndCooldown();
-	virtual void ExecuteSkill() {}
+	virtual void ExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector) {}
 	virtual void OnSkillEnd(bool bCanceled);
 
 	void PlaySkillMontage();
@@ -113,8 +115,6 @@ protected:
 	TWeakObjectPtr<AActor> AvatarActor;
 
 	int32 CurrentMontageIndex = 0;
-
-private:
 
 	uint32 ExecutionGrantCount = 1;
 

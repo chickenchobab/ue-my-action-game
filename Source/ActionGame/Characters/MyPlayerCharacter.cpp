@@ -13,6 +13,7 @@
 #include "Combat/MyCombatComponent.h"
 #include "Skills/MySkillData.h"
 #include "Items/MyWeapon.h"
+#include "Attributes/MyStatsComponent.h"
 
 AMyPlayerCharacter::AMyPlayerCharacter()
 {
@@ -51,26 +52,27 @@ void AMyPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		EnhancedInputComponent->BindAction(QuitGameAction, ETriggerEvent::Triggered, this, &AMyPlayerCharacter::QuitGame);
 
 		// Weapon switching input is determined by the character's currently equipped weapon, not using IMC.
-		if (UMyCombatComponent* CombatComp = GetCombatComponent())
+		for (EWeaponSkillType SkillType = static_cast<EWeaponSkillType>(0); SkillType < EWeaponSkillType::Max; ++SkillType)
 		{
-			for (EWeaponSkillType SkillType = static_cast<EWeaponSkillType>(0); SkillType < EWeaponSkillType::Max; ++SkillType)
+			if (const UInputAction* SkillInputAction = GetCombatComponent()->GetWeaponSkillInputAction(SkillType))
 			{
-				if (const UInputAction * SkillInputAction = CombatComp->GetWeaponSkillInputAction(SkillType))
-				{
-					EnhancedInputComponent->BindAction(SkillInputAction, ETriggerEvent::Triggered, CombatComp, &UMyCombatComponent::OnWeaponSkillPressed, SkillType);
-					EnhancedInputComponent->BindAction(SkillInputAction, ETriggerEvent::Completed, CombatComp, &UMyCombatComponent::OnWeaponSkillReleased, SkillType);
-				}
+				EnhancedInputComponent->BindAction(SkillInputAction, ETriggerEvent::Triggered, this, &ThisClass::HandleWeaponSkillPressed, SkillType);
+				EnhancedInputComponent->BindAction(SkillInputAction, ETriggerEvent::Completed, this, &ThisClass::HandleWeaponSkillReleased, SkillType);
 			}
 		}
-	}
-	else
-	{
-		UE_LOG(LogActionGame, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
 	}
 }
 
 void AMyPlayerCharacter::Move(const FInputActionValue& Value)
 {
+	if (GetStatsComponent() != nullptr)
+	{
+		if (!GetStatsComponent()->CanMove())
+		{
+			return;
+		}
+	}
+
 	// input is a Vector2D
 	FVector2D MovementVector = Value.Get<FVector2D>();
 
@@ -80,6 +82,14 @@ void AMyPlayerCharacter::Move(const FInputActionValue& Value)
 
 void AMyPlayerCharacter::Look(const FInputActionValue& Value)
 {
+	if (GetStatsComponent() != nullptr)
+	{
+		if (!GetStatsComponent()->CanMove())
+		{
+			return;
+		}
+	}
+
 	// input is a Vector2D
 	FVector2D LookAxisVector = Value.Get<FVector2D>();
 
@@ -132,4 +142,36 @@ void AMyPlayerCharacter::DoJumpEnd()
 {
 	// signal the character to stop jumping
 	StopJumping();
+}
+
+void AMyPlayerCharacter::HandleWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType)
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		if (UEnhancedPlayerInput* PlayerInput = Cast<UEnhancedPlayerInput>(PC->PlayerInput))
+		{
+			FInputActionValue Value = PlayerInput->GetActionValue(MoveAction);
+			FVector2D MovementVector = Value.Get<FVector2D>();
+			if (UMyCombatComponent* CombatComp = GetCombatComponent())
+			{
+				CombatComp->OnWeaponSkillPressed(ActionInstance, SkillType, MovementVector);
+			}
+		}
+	}
+}
+
+void AMyPlayerCharacter::HandleWeaponSkillReleased(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType)
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		if (UEnhancedPlayerInput* PlayerInput = Cast<UEnhancedPlayerInput>(PC->PlayerInput))
+		{
+			FInputActionValue Value = PlayerInput->GetActionValue(MoveAction);
+			FVector2D MovementVector = Value.Get<FVector2D>();
+			if (UMyCombatComponent* CombatComp = GetCombatComponent())
+			{
+				CombatComp->OnWeaponSkillReleased(ActionInstance, SkillType, MovementVector);
+			}
+		}
+	}
 }

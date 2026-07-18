@@ -10,7 +10,9 @@ class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
 struct FInputActionValue;
+struct FInputActionInstance;
 class UMySkillSlotComponent;
+enum class EWeaponSkillType : uint8;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -102,5 +104,10 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UMySkillSlotComponent> SkillSlotComponent;
+
+private:
+
+	FORCEINLINE void HandleWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType);
+	FORCEINLINE void HandleWeaponSkillReleased(const FInputActionInstance& ActionInstance,  EWeaponSkillType SkillType);
 };
 

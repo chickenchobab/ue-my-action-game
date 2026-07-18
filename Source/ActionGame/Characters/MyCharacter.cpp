@@ -25,9 +25,9 @@ AMyCharacter::AMyCharacter()
 
 	// Configure character movement
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = true;
+	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
-	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->bOrientRotationToMovement = true;
 
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
@@ -39,6 +39,60 @@ AMyCharacter::AMyCharacter()
 	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
 	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
+}
+
+void AMyCharacter::AddStatusTag(const FGameplayTag& Tag, int32 Count)
+{
+	if (StatsComponent)
+	{
+		StatsComponent->AddStatusTag(Tag, Count);
+	}
+}
+
+void AMyCharacter::RemoveStatusTag(const FGameplayTag& Tag, int32 Count)
+{
+	if (StatsComponent)
+	{
+		StatsComponent->RemoveStatusTag(Tag, Count);
+	}
+}
+
+void AMyCharacter::GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const
+{
+	if (StatsComponent)
+	{
+		StatsComponent->GetOwnedGameplayTags(TagContainer);
+	}
+}
+
+bool AMyCharacter::HasMatchingGameplayTag(FGameplayTag TagToCheck) const
+{
+	if (StatsComponent)
+	{
+		return StatsComponent->HasMatchingGameplayTag(TagToCheck);
+	}
+
+	return false;
+}
+
+bool AMyCharacter::HasAllMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const
+{
+	if (StatsComponent)
+	{
+		return StatsComponent->HasAllMatchingGameplayTags(TagContainer);
+	}
+
+	return false;
+}
+
+bool AMyCharacter::HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const
+{
+	if (StatsComponent)
+	{
+		return HasAnyMatchingGameplayTags(TagContainer);
+	}
+
+	return false;
 }
 
 void AMyCharacter::BeginPlay()
@@ -80,4 +134,3 @@ void AMyCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 }
-

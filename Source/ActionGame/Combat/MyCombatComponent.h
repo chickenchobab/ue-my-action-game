@@ -9,6 +9,8 @@ enum class EWeaponSkillType : uint8;
 class AMyWeapon;
 class UMySkillData;
 class UInputAction;
+class UEnhancedPlayerInput;
+struct FInputActionInstance;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class ACTIONGAME_API UMyCombatComponent : public UActorComponent
@@ -21,7 +23,9 @@ public:
 
 	void InitAttributes(UCurveTable* CurveTable, float Level);
 
-	const TSoftClassPtr<AMyWeapon>& GetDefaultWeaponClass() const { return DefaultWeaponClass; }
+	FORCEINLINE UEnhancedPlayerInput* GetPlayerController() const;
+
+	FORCEINLINE const TSoftClassPtr<AMyWeapon>& GetDefaultWeaponClass() const { return DefaultWeaponClass; }
 	FORCEINLINE AMyWeapon* GetCurrentWeapon() const { return CurrentWeapon; }
 
 	void EquipWeapon(AMyWeapon* Weapon);
@@ -34,8 +38,8 @@ public:
 	FORCEINLINE bool GetSkillEnabled() const { return bSkillEnabled; }
 	FORCEINLINE void SetSkillEnabled(bool bEnabled) { bSkillEnabled = bEnabled; }
 
-	void OnWeaponSkillPressed(EWeaponSkillType SkillType);
-	void OnWeaponSkillReleased(EWeaponSkillType SkillType);
+	void OnWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector);
+	void OnWeaponSkillReleased(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector);
 
 private:
 

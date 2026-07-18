@@ -4,6 +4,8 @@
 #include "Skills/SkillData_Attack.h"
 #include "Combat/MyCombatComponent.h"
 #include "Items/MyWeapon.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 void USkillData_Attack::InitWithItem(AActor* OwningItem)
 {
@@ -18,7 +20,7 @@ void USkillData_Attack::InitWithAvatar(AActor* NewAvatar)
 	Super::InitWithAvatar(NewAvatar);
 
 	bInAttackComboWindow = false;
-	AvatarActor.Get()->GetWorld()->GetTimerManager().ClearTimer(ComboWindowTimerHandle);
+	NewAvatar->GetWorld()->GetTimerManager().ClearTimer(ComboWindowTimerHandle);
 }
 
 bool USkillData_Attack::CanExecuteSkill()
@@ -33,10 +35,31 @@ bool USkillData_Attack::CanExecuteSkill()
 	return Super::CanExecuteSkill();
 }
 
-void USkillData_Attack::ExecuteSkill()
-{	
+void USkillData_Attack::ExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector)
+{
+	ACharacter* AvatarCharacter = Cast<ACharacter>(AvatarActor.Get());
+	if (!AvatarCharacter)
+	{
+		return;
+	}
+
 	bInAttackComboWindow = false;
-	AvatarActor.Get()->GetWorld()->GetTimerManager().ClearTimer(ComboWindowTimerHandle);
+	AvatarCharacter->GetWorld()->GetTimerManager().ClearTimer(ComboWindowTimerHandle);
+
+	CachedRotationRate = AvatarCharacter->GetCharacterMovement()->RotationRate;
+	if (!MovementVector.IsNearlyZero())
+	{
+		AvatarCharacter->GetCharacterMovement()->RotationRate = FRotator(-1.0f, -1.0f, -1.0f);
+
+		const FRotator ControlRotation = AvatarCharacter->GetController()->GetControlRotation();
+		const FRotator YawRotation(0, ControlRotation.Yaw, 0);
+		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+
+		const FVector DesiredLookAtVector = ForwardDirection * MovementVector.Y + RightDirection * MovementVector.X;
+		const FRotator DesiredRotation = FRotationMatrix::MakeFromXZ(DesiredLookAtVector, AvatarCharacter->GetActorUpVector()).Rotator();
+		AvatarCharacter->SetActorRotation(DesiredRotation);
+	}
 
 	PlaySkillMontage();
 	if (CurrentMontageIndex >= SkillMontages.Num())
@@ -53,13 +76,24 @@ void USkillData_Attack::ExecuteSkill()
 
 void USkillData_Attack::OnSkillEnd(bool bCanceled)
 {
+	ACharacter* AvatarCharacter = Cast<ACharacter>(AvatarActor.Get());
+	if (!AvatarCharacter)
+	{
+		return;
+	}
+
 	if (bCanceled)
 	{
 		bInAttackComboWindow = false;
-		AvatarActor.Get()->GetWorld()->GetTimerManager().ClearTimer(ComboWindowTimerHandle);
+		AvatarCharacter->GetWorld()->GetTimerManager().ClearTimer(ComboWindowTimerHandle);
 	}
 
 	Super::OnSkillEnd(bCanceled);
+
+	if (ActiveCount == 0)
+	{
+		AvatarCharacter->GetCharacterMovement()->RotationRate = CachedRotationRate;
+	}
 }
 
 void USkillData_Attack::OnSkillMontageEnded(UAnimMontage* Montage, bool bInterrupted)

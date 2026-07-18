@@ -3,6 +3,7 @@
 #pragma once
 
 #include "GameFramework/Character.h"
+#include "GameplayTagAssetInterface.h"
 #include "MyCharacter.generated.h"
 
 class UMyCombatComponent;
@@ -10,7 +11,7 @@ class UMyHealthComponent;
 class UMyStatsComponent;
 
 UCLASS()
-class ACTIONGAME_API AMyCharacter : public ACharacter
+class ACTIONGAME_API AMyCharacter : public ACharacter, public IGameplayTagAssetInterface
 {
 	GENERATED_BODY()
 
@@ -19,6 +20,17 @@ public:
 
 	FORCEINLINE UMyCombatComponent* GetCombatComponent() const { return CombatComponent; }
 	FORCEINLINE UMyHealthComponent* GetHealthComponent() const { return HealthComponent; }
+	FORCEINLINE UMyStatsComponent* GetStatsComponent() const { return StatsComponent; }
+
+	void AddStatusTag(const FGameplayTag& Tag, int32 Count=1);
+	void RemoveStatusTag(const FGameplayTag& Tag, int32 Count=1);
+
+	//~IGameplayTagAssetInterface
+	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override;
+	virtual bool HasMatchingGameplayTag(FGameplayTag TagToCheck) const override;
+	virtual bool HasAllMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const override;
+	virtual bool HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const override;
+	//~End of IGameplayTagAssetInterface
 
 protected:
 	virtual void BeginPlay() override;

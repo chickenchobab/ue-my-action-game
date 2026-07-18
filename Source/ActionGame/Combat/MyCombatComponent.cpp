@@ -5,6 +5,7 @@
 #include "Skills/MySkillData.h"
 #include "Characters/MyCharacter.h"
 #include "Items/MyWeapon.h"
+#include "EnhancedPlayerInput.h"
 
 // Sets default values for this component's properties
 UMyCombatComponent::UMyCombatComponent()
@@ -61,19 +62,19 @@ void UMyCombatComponent::EquipDefaultWeapon()
 	}
 }
 
-void UMyCombatComponent::OnWeaponSkillPressed(EWeaponSkillType SkillType)
+void UMyCombatComponent::OnWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector)
 {
 	if (CurrentWeapon && bSkillEnabled)
 	{
 		if (UMySkillData* SkillData = CurrentWeapon->GetSkillData(SkillType))
 		{
 			// TODO: skill batching
-			SkillData->TryExecuteSkill();
+			SkillData->TryExecuteSkill(ActionInstance, MovementVector);
 		}
 	}
 }
 
-void UMyCombatComponent::OnWeaponSkillReleased(EWeaponSkillType SkillType)
+void UMyCombatComponent::OnWeaponSkillReleased(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector)
 {
 	if (CurrentWeapon && bSkillEnabled)
 	{
@@ -81,7 +82,7 @@ void UMyCombatComponent::OnWeaponSkillReleased(EWeaponSkillType SkillType)
 		{
 			if (SkillData->IsSkillActive())
 			{
-				SkillData->HandleSkillReleased();
+				SkillData->HandleSkillReleased(ActionInstance, MovementVector);
 			}
 		}
 	}

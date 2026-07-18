@@ -5,6 +5,7 @@
 #include "Characters/MyCharacter.h"
 #include "Combat/MyCombatComponent.h"
 #include "Items/MyWeapon.h"
+#include "Attributes/MyGameplayTags.h"
 
 void UAnimNotifyState_MeleeHit::NotifyBegin(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, float TotalDuration, const FAnimNotifyEventReference& EventReference)
 {
@@ -12,6 +13,7 @@ void UAnimNotifyState_MeleeHit::NotifyBegin(USkeletalMeshComponent* MeshComp, UA
 
 	if (AMyCharacter* MeshOwnerCharacter = Cast<AMyCharacter>(MeshComp->GetOwner()))
 	{
+		MeshOwnerCharacter->AddStatusTag(MyGameplayTags::Status_Channeling);
 		if (AMyWeapon* Weapon = MeshOwnerCharacter->GetCombatComponent()->GetCurrentWeapon())
 		{
 			Weapon->OnAttackBegin();
@@ -25,6 +27,7 @@ void UAnimNotifyState_MeleeHit::NotifyEnd(USkeletalMeshComponent* MeshComp, UAni
 
 	if (AMyCharacter* MeshOwnerCharacter = Cast<AMyCharacter>(MeshComp->GetOwner()))
 	{
+		MeshOwnerCharacter->RemoveStatusTag(MyGameplayTags::Status_Channeling);
 		if (AMyWeapon* Weapon = MeshOwnerCharacter->GetCombatComponent()->GetCurrentWeapon())
 		{
 			Weapon->OnAttackEnd();

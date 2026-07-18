@@ -14,7 +14,7 @@ void UMySkillData::InitWithAvatar(AActor* NewAvatarActor)
 	CurrentMontageIndex = 0;
 }
 
-void UMySkillData::TryExecuteSkill()
+void UMySkillData::TryExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector)
 {
 	check(AvatarActor.IsValid());
 
@@ -23,7 +23,7 @@ void UMySkillData::TryExecuteSkill()
 		UE_LOG(LogTemp, Display, TEXT("Execute skill"));
 		++ActiveCount;
 		CommitCostsAndCooldown();
-		ExecuteSkill();
+		ExecuteSkill(Instance, MovementVector);
 	}
 }
 
@@ -32,7 +32,7 @@ void UMySkillData::CancelSkill()
 	OnSkillEnd(true);
 }
 
-void UMySkillData::HandleSkillReleased()
+void UMySkillData::HandleSkillReleased(const FInputActionInstance& Instance, const FVector2D& MovementVector)
 {
 }
 
@@ -66,6 +66,11 @@ void UMySkillData::EnableExecution(float Duration)
 
 bool UMySkillData::CanExecuteSkill()
 {
+	if (!AvatarActor.IsValid())
+	{
+		return false;
+	}
+
 	if (InstancingPolicy != ESkillInstancingPolicy::PerExecution && IsSkillActive())
 	{
 		return false;
