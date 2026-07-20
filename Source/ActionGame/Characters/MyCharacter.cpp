@@ -98,20 +98,6 @@ bool AMyCharacter::HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagCo
 void AMyCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-}
-
-void AMyCharacter::PostInitializeComponents()
-{
-	Super::PostInitializeComponents();
-
-	// Initialize character stats and equip the weapon.
-
-	if (UCurveTable* CurveTable = AttributeCurveTable.LoadSynchronous())
-	{
-		LoadAttributes(HealthComponent.Get(), CurveTable, 0.0f);
-		LoadAttributes(CombatComponent.Get(), CurveTable, 0.0f);
-		LoadAttributes(StatsComponent.Get(), CurveTable, 0.0f);
-	}
 
 	if (AMyGameMode* GM = Cast<AMyGameMode>(GetWorld()->GetAuthGameMode()))
 	{
@@ -126,6 +112,20 @@ void AMyCharacter::PostInitializeComponents()
 				);
 			}
 		}
+	}
+}
+
+void AMyCharacter::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	// Initialize character stats and equip the weapon.
+
+	if (UCurveTable* CurveTable = AttributeCurveTable.LoadSynchronous())
+	{
+		LoadAttributes(HealthComponent.Get(), CurveTable, 0.0f);
+		LoadAttributes(CombatComponent.Get(), CurveTable, 0.0f);
+		LoadAttributes(StatsComponent.Get(), CurveTable, 0.0f);
 	}
 }
 

@@ -55,12 +55,10 @@ public:
 protected:
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
-	virtual void Tick(float DeltaSeconds) override;
+
+	virtual void HitCheck(USkinnedMeshComponent* MeshComp, float DeltaTime, bool bNeedsValidRootMotion);
 
 protected:
-
-	UPROPERTY(VisibleDefaultsOnly)
-	TObjectPtr<USceneComponent> GripRoot;
 
 	UPROPERTY(VisibleDefaultsOnly)
 	TObjectPtr<UStaticMeshComponent> WeaponMesh;
@@ -85,6 +83,8 @@ public:
 
 private:
 
+	FDelegateHandle HitCheckDelegateHandle;
+
 	bool bIsAttacking : 1;
 
 	TArray<FName> WeaponSockets;
@@ -96,14 +96,16 @@ private:
 		const UAnimSequence* AnimSequence = nullptr;
 		const FAnimMontageInstance* MontageInstance = nullptr;
 
-		USkeletalMeshComponent* OwnerCharacterMesh = nullptr;
+		USkeletalMeshComponent* OwnerMesh = nullptr;
+		FTransform OwnerMeshTransformLastFrame;
 		FName GripBoneName = NAME_None;
 		int32 GripBoneIndex = INDEX_NONE;
 
 		FBoneContainer BoneContainer;
-		TArray<FTransform> SocketToGripBoneTransforms;
+		TArray<FTransform> WeaponSocketToGripBone;
 
-		TArray<AActor*> AlreadyHitActors;
+		TArray<AActor*> HitActorsThisFrame;
+		TSet<AActor*> SkillHandledActors;
 
 		FORCEINLINE bool IsValid() const;
 		FORCEINLINE void Reset();

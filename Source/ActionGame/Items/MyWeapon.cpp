@@ -10,27 +10,32 @@
 #include "Engine/SkeletalMeshSocket.h"
 #include "DrawDebugHelpers.h"
 
+static bool bShouldDrawSocketSphere = true;
+static inline void DrawSocketSphere(UWorld* World, FVector Location, float Radius, FColor Color)
+{
+	if (bShouldDrawSocketSphere)
+	{
+		DrawDebugSphere(World, Location, Radius, 16, Color, true, 0.1f, 0, 2.0f);
+	}
+}
+
+static FName GripSocketName = FName(TEXT("WeaponSocket"));
+
 AMyWeapon::AMyWeapon()
 {
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 	PrimaryActorTick.SetTickFunctionEnable(false);
 
-	GripRoot = CreateDefaultSubobject<USceneComponent>(TEXT("GripRoot"));
-	SetRootComponent(GripRoot);
-
 	WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
-	WeaponMesh->SetupAttachment(GripRoot);
+	SetRootComponent(WeaponMesh);
 	WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	WeaponMesh->SetSimulatePhysics(false);
 
-	DefaultAttachedSocket = TEXT("WeaponSocket");
+	DefaultAttachedSocket = GripSocketName;
 
 	PickupCollision = CreateDefaultSubobject<USphereComponent>(TEXT("PickupCollision"));
 	PickupCollision->SetupAttachment(WeaponMesh);
 	PickupCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-
-	WeaponSockets.Add(FName(TEXT("TipSocket")));
-	WeaponSockets.Add(FName(TEXT("BaseSocket")));
 }
 
 void AMyWeapon::Equip(USceneComponent* NewParent, const FName& OverrideAttachedSocket)
@@ -45,6 +50,11 @@ void AMyWeapon::Equip(USceneComponent* NewParent, const FName& OverrideAttachedS
 	);
 	AttachToComponent(NewParent, AttachRules, AttachedSocket);
 
+	if (USkeletalMeshComponent* MeshParent = Cast<USkeletalMeshComponent>(NewParent))
+	{
+		HitCheckDelegateHandle = MeshParent->OnTickPose.AddUObject(this, &ThisClass::HitCheck);
+	}
+
 	SetOwner(NewParent->GetOwner());
 	for (auto &KVP : SkillSet)
 	{
@@ -56,12 +66,17 @@ void AMyWeapon::Equip(USceneComponent* NewParent, const FName& OverrideAttachedS
 	
 	PickupCollision->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	bIsEquipped = true;
-
-	PrimaryActorTick.SetTickFunctionEnable(true);
 }
 
 void AMyWeapon::UnEquip()
 {
+	if (USkeletalMeshComponent* MeshParent = Cast<USkeletalMeshComponent>(RootComponent->GetAttachParent()))
+	{
+		MeshParent->OnTickPose.Remove(HitCheckDelegateHandle);
+	}
+
+	PrimaryActorTick.SetTickFunctionEnable(false);
+
 	const FDetachmentTransformRules DetachRules(EDetachmentRule::KeepWorld, true);
 	DetachFromActor(DetachRules);
 
@@ -75,20 +90,20 @@ void AMyWeapon::UnEquip()
 
 	PickupCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 
-	PrimaryActorTick.SetTickFunctionEnable(false);
-
 	bIsEquipped = false;
 }
 
 void AMyWeapon::InitWeaponForAttack(USkillData_Attack* Skill, const UAnimMontage* SkillMontage)
 {
 	CurrentActiveSkill = Skill;
+	// Anim Notify state does not provide exact skill montage, so set here
 	InitHitCheckContext(SkillMontage);
 }
 
 void AMyWeapon::OnAttackBegin()
 {
 	bIsAttacking = true;
+	HitCheckContext.OwnerMeshTransformLastFrame = HitCheckContext.OwnerMesh->GetComponentTransform();
 }
 
 void AMyWeapon::OnAttackEnd()
@@ -101,19 +116,14 @@ void AMyWeapon::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
 
+	WeaponSockets = WeaponMesh->GetAllSocketNames();
+
 	for (const TPair<EWeaponSkillType, TObjectPtr<UMySkillData>>& Pair : SkillSet)
 	{
 		if (UMySkillData* SkillData = Pair.Value.Get())
 		{
 			SkillData->InitWithItem(this);
 		}
-	}
-
-	if (WeaponMesh->DoesSocketExist(TEXT("GripSocket")))
-	{
-		const FTransform GripTransform = WeaponMesh->GetSocketTransform(TEXT("GripSocket"), RTS_Component);
-		// In case the static mesh has been scaled, multiply the relative scale of the mesh
-		WeaponMesh->SetRelativeLocation(-GripTransform.GetLocation() * WeaponMesh->GetRelativeScale3D());
 	}
 }
 
@@ -122,10 +132,8 @@ void AMyWeapon::BeginPlay()
 	Super::BeginPlay();
 }
 
-void AMyWeapon::Tick(float DeltaSeconds)
+void AMyWeapon::HitCheck(USkinnedMeshComponent* MeshComp, float DeltaTime, bool bNeedsValidRootMotion)
 {
-	Super::Tick(DeltaSeconds);
-
 	if (!bIsEquipped || !bIsAttacking || WeaponSockets.IsEmpty())
 	{
 		//UE_LOG(LogTemp, Display, TEXT("Tick return: Equip(%d) and Attacking(%d)"), bIsEquipped, bIsAttacking);
@@ -135,6 +143,11 @@ void AMyWeapon::Tick(float DeltaSeconds)
 	{
 		//UE_LOG(LogTemp, Display, TEXT("Tick return: HitCheckContext invalid"));
 		return;
+	}
+
+	for (int i = 0; i < 2; ++i)
+	{
+		DrawSocketSphere(GetWorld(), WeaponMesh->GetSocketLocation(WeaponSockets[i]), 5.0f, FColor::Red);
 	}
 
 	TArray<FSocketSamples> Samples;
@@ -186,18 +199,29 @@ void AMyWeapon::Tick(float DeltaSeconds)
 
 					if (IntersectQuadWithCapsule(Query, CapsuleBase, CapsuleTop, Radius))
 					{
-						HitCheckContext.AlreadyHitActors.AddUnique(CandidateActor);
+						HitCheckContext.HitActorsThisFrame.AddUnique(CandidateActor);
 					}
 				}
 			}
 		}
 	}
 
-	if (!HitCheckContext.AlreadyHitActors.IsEmpty())
+	if (!HitCheckContext.HitActorsThisFrame.IsEmpty())
 	{
-		OnAttackHit.Broadcast(GetOwner(), HitCheckContext.AlreadyHitActors);
-		HitCheckContext.AlreadyHitActors.Empty();
+		TArray<AActor*> NewlyHitActors;
+		for (AActor* HitActor : HitCheckContext.HitActorsThisFrame)
+		{
+			if (!HitCheckContext.SkillHandledActors.Contains(HitActor))
+			{
+				NewlyHitActors.Add(HitActor);
+				HitCheckContext.SkillHandledActors.Add(HitActor);
+			}
+		}
+		OnAttackHit.Broadcast(GetOwner(), NewlyHitActors);
+		HitCheckContext.HitActorsThisFrame.Empty();
 	}
+
+	HitCheckContext.OwnerMeshTransformLastFrame = HitCheckContext.OwnerMesh->GetComponentTransform();
 }
 
 void AMyWeapon::SampleSocketPositions(TArray<FSocketSamples>& OutSamples)
@@ -228,22 +252,25 @@ void AMyWeapon::SampleSocketPositions(TArray<FSocketSamples>& OutSamples)
 		// GetBonePose() does not account for the anim sequence's RateScale.
 		float SampleTime = FMath::Lerp(PrevAnimTime, CurrAnimTime, Alpha) * HitCheckContext.AnimSequence->RateScale;
 
+		FTransform SkelMeshToWorld;
+		SkelMeshToWorld.Blend(HitCheckContext.OwnerMeshTransformLastFrame, HitCheckContext.OwnerMesh->GetComponentTransform(), Alpha);
+
 		FCompactPose Pose;
 		Pose.SetBoneContainer(&HitCheckContext.BoneContainer);
 		FBlendedCurve Curve;
 		UE::Anim::FStackAttributeContainer Attributes;
 		FAnimationPoseData PoseData(Pose, Curve, Attributes);
-		HitCheckContext.AnimSequence->GetBonePose(PoseData, FAnimExtractContext((double)SampleTime, false), true);
+		HitCheckContext.AnimSequence->GetBonePose(PoseData, FAnimExtractContext((double)SampleTime, true), false);
 
 		FCSPose<FCompactPose> CSPose;
 		CSPose.InitPose(Pose);
-		FCompactPoseBoneIndex CompactIndex = HitCheckContext.BoneContainer.MakeCompactPoseIndex(FMeshPoseBoneIndex(HitCheckContext.GripBoneIndex));
-		FTransform BoneComponent = CSPose.GetComponentSpaceTransform(CompactIndex);
+		FCompactPoseBoneIndex GripCompactIndex = HitCheckContext.BoneContainer.MakeCompactPoseIndex(FMeshPoseBoneIndex(HitCheckContext.GripBoneIndex));
+		const FTransform& GripBoneToSkelMesh = CSPose.GetComponentSpaceTransform(GripCompactIndex);
 
 		for (int32 Socket = 0; Socket < WeaponSockets.Num(); ++Socket)
 		{
-			const FTransform SocketWorld = HitCheckContext.SocketToGripBoneTransforms[Socket] * BoneComponent * HitCheckContext.OwnerCharacterMesh->GetComponentToWorld();
-
+			const FTransform SocketWorld = HitCheckContext.WeaponSocketToGripBone[Socket] * GripBoneToSkelMesh * SkelMeshToWorld;
+			DrawSocketSphere(GetWorld(), SocketWorld.GetLocation(), 2.0f, FColor::Blue);
 			OutSamples[Socket].Locations.Add(SocketWorld.GetLocation());
 		}
 	}
@@ -268,7 +295,7 @@ void AMyWeapon::GetCandidatesByBoxOverlap(TArray<FOverlapResult>& OutCandidates,
 	FCollisionShape BoxShape = FCollisionShape::MakeBox(Extent);
 
 	QueryParams.ClearIgnoredSourceObjects();
-	QueryParams.AddIgnoredActors(HitCheckContext.AlreadyHitActors);
+	QueryParams.AddIgnoredActors(HitCheckContext.HitActorsThisFrame);
 	QueryParams.AddIgnoredActor(GetOwner());
 
 	GetWorld()->OverlapMultiByObjectType(
@@ -425,30 +452,31 @@ void AMyWeapon::InitHitCheckContext(const UAnimMontage* Montage)
 		return;
 	}
 
-	HitCheckContext.OwnerCharacterMesh = OwnerCharacter->GetMesh();
-	if (HitCheckContext.OwnerCharacterMesh == nullptr)
+	HitCheckContext.OwnerMesh = OwnerCharacter->GetMesh();
+	if (HitCheckContext.OwnerMesh == nullptr)
 	{
 		return;
 	}
 
-	const USkeletalMeshSocket* GripSocket = HitCheckContext.OwnerCharacterMesh->GetSocketByName(FName("WeaponSocket"));
+	const USkeletalMeshSocket* GripSocket = HitCheckContext.OwnerMesh->GetSocketByName(GripSocketName);
 	if (GripSocket == nullptr)
 	{
 		return;
 	}
 	HitCheckContext.GripBoneName = GripSocket->BoneName;
-	HitCheckContext.GripBoneIndex = HitCheckContext.OwnerCharacterMesh->GetBoneIndex(GripSocket->BoneName);
+	UE_LOG(LogTemp, Display, TEXT("GripBoneName: %s"), *GripSocket->BoneName.ToString());
+	HitCheckContext.GripBoneIndex = HitCheckContext.OwnerMesh->GetBoneIndex(GripSocket->BoneName);
 
-	BuildBoneContainer(HitCheckContext.OwnerCharacterMesh->GetSkeletalMeshAsset());
+	BuildBoneContainer(HitCheckContext.OwnerMesh->GetSkeletalMeshAsset());
 
-	TArray<FTransform>& SocketToGripBoneArray = HitCheckContext.SocketToGripBoneTransforms;
-	SocketToGripBoneArray.SetNum(WeaponSockets.Num());
+	const FTransform& GripSocketToBone = GripSocket->GetSocketLocalTransform();
+
+	TArray<FTransform>& WeaponSocketToGripBone = HitCheckContext.WeaponSocketToGripBone;
+	WeaponSocketToGripBone.SetNum(WeaponSockets.Num());
 	for (int32 Socket = 0; Socket < WeaponSockets.Num(); ++Socket)
 	{
-		const FTransform& SocketToMesh = WeaponMesh->GetSocketTransform(WeaponSockets[Socket], RTS_Component);
-		const FTransform& MeshToRoot = WeaponMesh->GetRelativeTransform();
-		const FTransform& RootToGripBone = RootComponent->GetRelativeTransform();
-		SocketToGripBoneArray[Socket] = SocketToMesh * MeshToRoot * RootToGripBone;
+		const FTransform& WeaponSocketToWeaponMesh = WeaponMesh->GetSocketTransform(WeaponSockets[Socket], RTS_Component);
+		WeaponSocketToGripBone[Socket] = WeaponSocketToWeaponMesh * GripSocketToBone;
 	}
 }
 
@@ -480,11 +508,11 @@ bool AMyWeapon::FHitCheckContext::IsValid() const
 	{
 		return false;
 	}
-	if (!OwnerCharacterMesh || GripBoneName == NAME_None || GripBoneIndex == INDEX_NONE)
+	if (!OwnerMesh || GripBoneName == NAME_None || GripBoneIndex == INDEX_NONE)
 	{
 		return false;
 	}
-	if (SocketToGripBoneTransforms.IsEmpty())
+	if (WeaponSocketToGripBone.IsEmpty())
 	{
 		return false;
 	}
@@ -497,11 +525,12 @@ void AMyWeapon::FHitCheckContext::Reset()
 	MontageInstance = nullptr;
 	Montage = nullptr;
 
-	OwnerCharacterMesh = nullptr;
+	OwnerMesh = nullptr;
 	GripBoneName = NAME_None;
 	GripBoneIndex = INDEX_NONE;
-	SocketToGripBoneTransforms.Reset();
+	WeaponSocketToGripBone.Reset();
 	BoneContainer.Reset();
 
-	AlreadyHitActors.Empty();
+	HitActorsThisFrame.Empty();
+	SkillHandledActors.Reset();
 }
