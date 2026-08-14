@@ -89,7 +89,7 @@ bool AMyCharacter::HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagCo
 {
 	if (StatsComponent)
 	{
-		return HasAnyMatchingGameplayTags(TagContainer);
+		return StatsComponent->HasAnyMatchingGameplayTags(TagContainer);
 	}
 
 	return false;

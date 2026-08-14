@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Animations/AnimNotifyState_MeleeHit.h"
+#include "Animations/Notifies/AnimNotifyState_MeleeHit.h"
 #include "Characters/MyCharacter.h"
 #include "Combat/MyCombatComponent.h"
 #include "Items/MyWeapon.h"
