@@ -9,8 +9,9 @@
 #include "Components/CapsuleComponent.h"
 #include "Engine/SkeletalMeshSocket.h"
 #include "DrawDebugHelpers.h"
+#include "Misc/MemStack.h" // modified
 
-static bool bShouldDrawSocketSphere = true;
+static bool bShouldDrawSocketSphere = false;
 static inline void DrawSocketSphere(UWorld* World, FVector Location, float Radius, FColor Color)
 {
 	if (bShouldDrawSocketSphere)
@@ -160,6 +161,7 @@ void AMyWeapon::HitCheck(USkinnedMeshComponent* MeshComp, float DeltaTime, bool 
 
 	FCollisionQueryParams QueryParams;
 	QueryParams.bTraceComplex = false;
+	QueryParams.bSkipNarrowPhase = true; // 엔진의 정밀 겹침 계산(narrow phase)은 생략한다.
 
 	FCollisionObjectQueryParams ObjectQueryParams;
 	ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
@@ -231,9 +233,9 @@ void AMyWeapon::SampleSocketPositions(TArray<FSocketSamples>& OutSamples)
 	float CurrAnimTime = MontageInstance->GetPosition();
 	float DeltaMoved = MontageInstance->GetDeltaMoved();
 
-	// Use RawAnimationData because it contains the original uncompressed keyframes,
-	// allowing bone transforms to be sampled at the animation's native resolution,
-	// independent of the game's frame rate.
+	// 서브스텝 수를 애님 원본의 샘플링 프레임레이트로 정한다.
+	// 게임 프레임 레이트가 떨어져도 애님 시간당 표본 밀도가 유지된다.
+	// 원본 키 직접 접근(bForceUseRawData)은 에디터 전용이라 쓰지 않는다.
 	
 	float SamplingFrameRate = HitCheckContext.AnimSequence->GetSamplingFrameRate().AsDecimal();
 	int32 AnimBasedSteps = FMath::Max(1, FMath::CeilToInt(DeltaMoved * SamplingFrameRate) * 3);
@@ -245,6 +247,9 @@ void AMyWeapon::SampleSocketPositions(TArray<FSocketSamples>& OutSamples)
 		OutSamples[i].SocketName = WeaponSockets[i];
 		OutSamples[i].Locations.Reserve(SubStepCount + 1);
 	}
+
+	// FMemStack에서 잡은 포즈/커브 메모리를 함수 종료 시 되감는다.
+	FMemMark Mark(FMemStack::Get());
 
 	for (int32 Step = 0; Step <= SubStepCount; ++Step)
 	{
