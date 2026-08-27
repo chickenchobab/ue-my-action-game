@@ -16,7 +16,7 @@ class ACTIONGAME_API AMyCharacter : public ACharacter, public IGameplayTagAssetI
 	GENERATED_BODY()
 
 public:
-	AMyCharacter();
+	AMyCharacter(const FObjectInitializer& ObjectInitializer);
 
 	FORCEINLINE UMyCombatComponent* GetCombatComponent() const { return CombatComponent; }
 	FORCEINLINE UMyHealthComponent* GetHealthComponent() const { return HealthComponent; }
@@ -31,6 +31,8 @@ public:
 	virtual bool HasAllMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const override;
 	virtual bool HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const override;
 	//~End of IGameplayTagAssetInterface
+
+	FORCEINLINE bool IsSprintActive() const { return bIsSprintActive; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -56,6 +58,12 @@ private:
 
 	UPROPERTY(EditDefaultsOnly)
 	TSoftObjectPtr<UCurveTable> AttributeCurveTable;
+
+protected:
+
+	bool bIsSprintActive = false;
+	bool bIsSprintActiveLastMove = false;
+	float CachedWalkSpeed;
 };
 
 template <typename TComponent>

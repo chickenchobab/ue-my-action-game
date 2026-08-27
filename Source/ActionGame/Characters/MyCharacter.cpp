@@ -2,8 +2,8 @@
 
 
 #include "Characters/MyCharacter.h"
+#include "Characters/MyCharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
 #include "Player/MyPlayerState.h"
 #include "Combat/MyCombatComponent.h"
 #include "Attributes/MyHealthComponent.h"
@@ -12,7 +12,8 @@
 #include "Engine/AssetManager.h"
 #include "Items/MyWeapon.h"
 
-AMyCharacter::AMyCharacter()
+AMyCharacter::AMyCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UMyCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = false;
 
@@ -23,22 +24,28 @@ AMyCharacter::AMyCharacter()
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
+	GetCharacterMovement()->GravityScale = 1.0f;
+	GetCharacterMovement()->MaxWalkSpeed = 180.f;
+
+	GetCharacterMovement()->BrakingFrictionFactor = 1.0f;
+	GetCharacterMovement()->BrakingFriction = 6.0f;
+	GetCharacterMovement()->BrakingDecelerationWalking = 1400.0f;
+
+	GetCharacterMovement()->GroundFriction = 8.0f;
+	GetCharacterMovement()->bUseControllerDesiredRotation = false;
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+	GetCharacterMovement()->RotationRate = FRotator(0.f, 0.f, 0.f);
+	GetCharacterMovement()->bAllowPhysicsRotationDuringAnimRootMotion = false;
+	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
+	GetCharacterMovement()->bCanWalkOffLedgesWhenCrouching = true;
+	GetCharacterMovement()->SetCrouchedHalfHeight(65.0f);
+	GetCharacterMovement()->JumpZVelocity = 500.f;
+	GetCharacterMovement()->AirControl = 0.35f;
+
 	// Configure character movement
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
-	GetCharacterMovement()->bOrientRotationToMovement = true;
-
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
-
-	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
-	// instead of recompiling to adjust them
-	GetCharacterMovement()->JumpZVelocity = 500.f;
-	GetCharacterMovement()->AirControl = 0.35f;
-	GetCharacterMovement()->MaxWalkSpeed = 500.f;
-	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
-	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
-	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
 }
 
 void AMyCharacter::AddStatusTag(const FGameplayTag& Tag, int32 Count)

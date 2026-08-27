@@ -13,7 +13,7 @@ class ACTIONGAME_API AMyEnemyCharacter : public AMyCharacter
 	GENERATED_BODY()
 
 public:
-	AMyEnemyCharacter();
+	AMyEnemyCharacter(const FObjectInitializer& ObjectInitializer);
 
 protected:
 	virtual void BeginPlay() override;

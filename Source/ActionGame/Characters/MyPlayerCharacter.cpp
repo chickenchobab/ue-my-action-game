@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "MyPlayerCharacter.h"
+#include "Characters/MyPlayerCharacter.h"
+#include "Characters/MyCharacterMovementComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -15,21 +16,21 @@
 #include "Items/MyWeapon.h"
 #include "Attributes/MyStatsComponent.h"
 
-AMyPlayerCharacter::AMyPlayerCharacter()
+AMyPlayerCharacter::AMyPlayerCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
 {
-	// Create a camera boom (pulls in towards the player if there is a collision)
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->TargetArmLength = 400.0f;
 	CameraBoom->bUsePawnControlRotation = true;
+	CameraBoom->SetUsingAbsoluteRotation(true); // Animation �������� ĳ���� ȸ���� �����ϹǷ�
 
 	// Create a follow camera
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
 
-	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
-	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+	CachedWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
 }
 
 void AMyPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -44,6 +45,8 @@ void AMyPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMyPlayerCharacter::Move);
 		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AMyPlayerCharacter::Look);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AMyPlayerCharacter::StartSprint);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AMyPlayerCharacter::StopSprint);
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AMyPlayerCharacter::Look);
@@ -80,6 +83,16 @@ void AMyPlayerCharacter::Move(const FInputActionValue& Value)
 	DoMove(MovementVector.X, MovementVector.Y);
 }
 
+void AMyPlayerCharacter::StartSprint(const FInputActionValue& Value)
+{
+	bIsSprintActive = true;
+}
+
+void AMyPlayerCharacter::StopSprint(const FInputActionValue& Value)
+{
+	bIsSprintActive = false;
+}
+
 void AMyPlayerCharacter::Look(const FInputActionValue& Value)
 {
 	if (GetStatsComponent() != nullptr)
@@ -110,15 +123,32 @@ void AMyPlayerCharacter::DoMove(float Right, float Forward)
 		const FRotator Rotation = GetController()->GetControlRotation();
 		const FRotator YawRotation(0, Rotation.Yaw, 0);
 
-		// get forward vector
 		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-
-		// get right vector 
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-		// add movement 
-		AddMovementInput(ForwardDirection, Forward);
-		AddMovementInput(RightDirection, Right);
+		if (Forward != 0.0f)
+		{
+			AddMovementInput(ForwardDirection, Forward);
+		}
+		if (Right != 0.0f)
+		{
+			AddMovementInput(RightDirection, Right);
+		}
+
+		if (bIsSprintActiveLastMove != bIsSprintActive)
+		{
+			if (bIsSprintActive)
+			{
+				CachedWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
+				GetCharacterMovement()->MaxWalkSpeed = 600.f;
+			}
+			else
+			{
+				GetCharacterMovement()->MaxWalkSpeed = CachedWalkSpeed;
+			}
+		}
+
+		bIsSprintActiveLastMove = bIsSprintActive;
 	}
 }
 

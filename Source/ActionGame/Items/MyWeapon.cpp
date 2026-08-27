@@ -54,6 +54,10 @@ void AMyWeapon::Equip(USceneComponent* NewParent, const FName& OverrideAttachedS
 	if (USkeletalMeshComponent* MeshParent = Cast<USkeletalMeshComponent>(NewParent))
 	{
 		HitCheckDelegateHandle = MeshParent->OnTickPose.AddUObject(this, &ThisClass::HitCheck);
+		if (AnimLayerClass)
+		{
+			MeshParent->LinkAnimClassLayers(AnimLayerClass);
+		}
 	}
 
 	SetOwner(NewParent->GetOwner());
@@ -74,6 +78,7 @@ void AMyWeapon::UnEquip()
 	if (USkeletalMeshComponent* MeshParent = Cast<USkeletalMeshComponent>(RootComponent->GetAttachParent()))
 	{
 		MeshParent->OnTickPose.Remove(HitCheckDelegateHandle);
+		MeshParent->UnlinkAnimClassLayers(AnimLayerClass);
 	}
 
 	PrimaryActorTick.SetTickFunctionEnable(false);

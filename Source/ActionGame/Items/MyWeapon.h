@@ -70,6 +70,9 @@ protected:
 
 	USkillData_Attack* CurrentActiveSkill;
 
+	UPROPERTY(EditDefaultsOnly)
+	TSubclassOf<UAnimInstance> AnimLayerClass;
+
 private:
 
 	UPROPERTY(VisibleDefaultsOnly)

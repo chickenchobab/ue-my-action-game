@@ -7,7 +7,8 @@
 #include "Items/MyWeapon.h"
 #include "Combat/MyCombatComponent.h"
 
-AMyEnemyCharacter::AMyEnemyCharacter()
+AMyEnemyCharacter::AMyEnemyCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
 {
 }
 

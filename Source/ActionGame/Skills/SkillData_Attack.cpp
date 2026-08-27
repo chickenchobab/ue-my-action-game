@@ -46,10 +46,9 @@ void USkillData_Attack::ExecuteSkill(const FInputActionInstance& Instance, const
 	bInAttackComboWindow = false;
 	AvatarCharacter->GetWorld()->GetTimerManager().ClearTimer(ComboWindowTimerHandle);
 
-	CachedRotationRate = AvatarCharacter->GetCharacterMovement()->RotationRate;
 	if (!MovementVector.IsNearlyZero())
 	{
-		AvatarCharacter->GetCharacterMovement()->RotationRate = FRotator(-1.0f, -1.0f, -1.0f);
+		AvatarCharacter->GetCharacterMovement()->RotationRate.Yaw = -1.f;
 
 		const FRotator ControlRotation = AvatarCharacter->GetController()->GetControlRotation();
 		const FRotator YawRotation(0, ControlRotation.Yaw, 0);
@@ -92,7 +91,8 @@ void USkillData_Attack::OnSkillEnd(bool bCanceled)
 
 	if (ActiveCount == 0)
 	{
-		AvatarCharacter->GetCharacterMovement()->RotationRate = CachedRotationRate;
+		AvatarCharacter->GetCharacterMovement()->RotationRate.Yaw = 0.f;
+		UE_LOG(LogTemp, Display, TEXT("Return the rotation rate"));
 	}
 }
 

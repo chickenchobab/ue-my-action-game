@@ -20,6 +20,10 @@ public class ActionGame : ModuleRules
 			"UMG",
 			"Slate",
 			"GameplayTags",
+			"AnimGraphRuntime",
+			"AnimationBlueprintLibrary",
+			"AnimationLocomotionLibraryRuntime",
+			"MotionWarping" // modified
         });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { 

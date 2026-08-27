@@ -35,6 +35,4 @@ protected:
 
 	FTimerHandle ComboWindowTimerHandle;
 	bool bInAttackComboWindow = false;
-
-	FRotator CachedRotationRate = FRotator(ForceInit);
 };
