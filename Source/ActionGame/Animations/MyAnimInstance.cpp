@@ -276,12 +276,15 @@ void UMyAnimInstance::UpdateCharacterRotation()
 		StateData = &RunStateData;
 	}
 
+	// pivot 모션의 회전 방향과 반대로 회전하는 증상을 방지하기 위해
 	if (LocomotionState != ELocomotionState::Pivot && !InputVector.IsNearlyZero())
 	{
 		PrimaryTargetRotation = FMath::RInterpConstantTo(PrimaryTargetRotation, InputVector.Rotation(), GetDeltaSeconds(), PrimaryRotationInterpSpeed);
 	}
 	SecondaryTargetRotation = FMath::RInterpTo(SecondaryTargetRotation, PrimaryTargetRotation, GetDeltaSeconds(), SecondaryRotationInterpSpeed);
 
+	// 애니메이션의 시각 정합성을 위해 커브 값을 an이 아니라 (1 - w)a + (w)an으로 구웠다
+	// 회전 모션이 실제로 보이는 정도와 회전을 일치시키기 위해
 	const float StateWeight = UCachedAnimDataLibrary::StateMachine_GetGlobalWeight(this, *StateData);
 	float CurveRotationYaw = UKismetMathLibrary::SafeDivide(GetCurveValue(RotationCurveName), StateWeight);
 	FRotator NewRotation = UKismetMathLibrary::MakeRotator(SecondaryTargetRotation.Roll, SecondaryTargetRotation.Pitch, SecondaryTargetRotation.Yaw + CurveRotationYaw);
