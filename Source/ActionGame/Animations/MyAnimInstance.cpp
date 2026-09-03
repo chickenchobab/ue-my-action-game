@@ -4,11 +4,15 @@
 #include "Animations/MyAnimInstance.h"
 #include "Characters/MyCharacter.h"
 #include "Characters/MyCharacterMovementComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "KismetAnimationLibrary.h"
 #include "AnimationStateMachineLibrary.h"
 #include "AnimExecutionContextLibrary.h"
 #include "Animation/CachedAnimDataLibrary.h"
 #include "Kismet/KismetMathLibrary.h"
+
+// jump 상태 중 fall loop 상태로 전이되기 위한 GroundDistance 차이
+constexpr float GroundDistanceErrorTolerance = 30.0f;
 
 UMyAnimInstance::UMyAnimInstance()
 {
@@ -25,7 +29,8 @@ void UMyAnimInstance::NativeInitializeAnimation()
 	bIsFirstUpdate = true;
 
 	LocomotionStateData.StateMachineName = TEXT("MainStates");
-	LocomotionStateData.StateName = TEXT("Locomotion");
+	LocomotionStateData.StateName = TEXT("OnGround");
+	// Locomotion state 은 OnGround state를 구현한다
 	WalkStateData.StateMachineName = TEXT("Locomotion");
 	WalkStateData.StateName = TEXT("Walk");
 	RunStateData.StateMachineName = TEXT("Locomotion");
@@ -54,7 +59,26 @@ void UMyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	InputVector = MovementComponent->GetLastInputVector();
 	InputVector = UKismetMathLibrary::ClampVectorSize(InputVector, 0.f, 1.f);
 
-	bIsFalling = MovementComponent->IsFalling();
+	bIsOnGround = MovementComponent->IsMovingOnGround();
+	bIsMovementModeFalling = MovementComponent->IsFalling();
+	MaxJumpHeight = MovementComponent->GetMaxJumpHeightWithJumpTime();
+	GravityZ = MovementComponent->GetGravityZ();
+	if (bIsMovementModeFalling)
+	{
+		const float GroundRangeBase = FMath::Max(MaxJumpHeight, InitialJumpMaxHeight);
+		const float FloorTraceDistance = GroundRangeBase + GroundDistanceErrorTolerance + 1.0f;
+
+		FFindFloorResult FloorResult;
+		MovementComponent->ComputeFloorDist(
+			Location,
+			FloorTraceDistance,
+			FloorTraceDistance,
+			FloorResult,
+			Character->GetCapsuleComponent()->GetScaledCapsuleRadius());
+
+		GroundDistance = FloorResult.GetDistanceToFloor();
+	}
+
 	bIsRunning = Character->IsSprintActive();
 	bHasRootMotion = Character->HasAnyRootMotion();
 }
@@ -65,6 +89,7 @@ void UMyAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 	UpdateRotationData(DeltaSeconds);
 	UpdateVelocityData(DeltaSeconds);
 	UpdateAccelerationData(DeltaSeconds);
+	UpdateJumpFallData(DeltaSeconds);
 
 	LocomotionStateLastUpdate = LocomotionState;
 	DetermineLocomotionState();
@@ -94,6 +119,8 @@ void UMyAnimInstance::UpdateLocationData(float DeltaSeconds)
 	{
 		DisplacementSinceLastUpdate = (Location - LocationLastUpdate).Size();
 		DisplacementSpeed = (DeltaSeconds != 0.0f ? DisplacementSinceLastUpdate / DeltaSeconds : 0.0f);
+
+		VerticalDisplacementSinceLastUpdate = Location.Z - LocationLastUpdate.Z;
 	}
 
 	LocationLastUpdate = Location;
@@ -131,9 +158,79 @@ void UMyAnimInstance::UpdateAccelerationData(float DeltaSeconds)
 	VelocityAccelDotLastUpdate = VelocityAccelDot;
 }
 
+void UMyAnimInstance::UpdateJumpFallData(float DeltaSeconds)
+{
+	bool bWasInAirLastUpdate = bIsJumping || bIsFalling;
+	bIsJumping = bIsFalling = false;
+	if (bIsMovementModeFalling)
+	{
+		bIsJumping = WorldVelocity.Z > 0.0f;
+		bIsFalling = !bIsJumping;
+
+		bGroundMovedFarther = false;
+		bGroundMovedCloser = false;
+
+		if (!bWasInAirLastUpdate)
+		{
+			ExpectedGroundDistance = GroundDistance;
+		}
+		else
+		{
+			ExpectedGroundDistance += VerticalDisplacementSinceLastUpdate;
+
+			if (bIsFalling)
+			{
+				const float GroundDistanceError = GroundDistance - ExpectedGroundDistance;
+				if (GroundDistanceError > GroundDistanceErrorTolerance)
+				{
+					// 지면이 멀어졌다
+					bGroundMovedFarther = true;
+					ExpectedGroundDistance = GroundDistance;
+				}
+				else if (GroundDistanceError < -GroundDistanceErrorTolerance)
+				{
+					// 지면이 가까워졌다
+					bGroundMovedCloser = true;
+					ExpectedGroundDistance = GroundDistance;
+				}
+			}
+		}
+	}
+	else
+	{
+		bGroundMovedFarther = false;
+		bGroundMovedCloser = false;
+		InitialJumpMaxHeight = 0.0f;
+		ExpectedGroundDistance = 0.0f;
+	}
+
+	if (!bWasInAirLastUpdate && bIsJumping)
+	{
+		const bool bWasMovingState = LocomotionStateLastUpdate == ELocomotionState::Walk ||
+			LocomotionStateLastUpdate == ELocomotionState::Run;
+		constexpr float JumpFromMoveSpeedThreshold = 1.0f;
+		bJumpStartedFromMove = bWasMovingState ||
+			WorldVelocity.SizeSquared2D() > FMath::Square(JumpFromMoveSpeedThreshold);
+	}
+
+	TimeToJumpApex = bIsJumping && (-GravityZ) > UE_KINDA_SMALL_NUMBER ? WorldVelocity.Z / (-GravityZ) : 0.0f;
+
+	if (bIsMovementModeFalling && (-GravityZ) > UE_SMALL_NUMBER)
+	{
+		const float Discriminant = WorldVelocity.Z * WorldVelocity.Z + 2.0f * (-GravityZ) * GroundDistance;
+
+		TimeToLand = (WorldVelocity.Z + FMath::Sqrt(FMath::Max(Discriminant, 0.0f))) / (-GravityZ);
+		TimeToLand = FMath::Max(TimeToLand, 0.0f);
+	}
+	else
+	{
+		TimeToLand = 0.0f;
+	}
+}
+
 void UMyAnimInstance::DetermineLocomotionState()
 {
-	if (bIsFalling)
+	if (!bIsOnGround)
 	{
 		LocomotionState = ELocomotionState::Idle;
 		return;
@@ -321,6 +418,25 @@ void UMyAnimInstance::SetupPivotState(const FAnimUpdateContext& Context, const F
 
 void UMyAnimInstance::UpdatePivotState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
 {
+}
+
+void UMyAnimInstance::SetupJumpState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+{
+	// Jump 높이 커브의 환산 스케일
+	InitialJumpMaxHeight = MaxJumpHeight;
+
+	ExpectedGroundDistance = GroundDistance;
+	bGroundMovedFarther = false;
+	bGroundMovedCloser = false;
+}
+
+void UMyAnimInstance::SetupFallLandState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+{
+	ExpectedGroundDistance = GroundDistance;
+	bGroundMovedFarther = false;
+	bGroundMovedCloser = false;
+
+	bFallLandEndNotified = false;
 }
 
 bool UMyAnimInstance::IsMovementWithinThresholds(float MinCurrentSpeed, float MinMaxSpeed, float MinInputAcceleration) const

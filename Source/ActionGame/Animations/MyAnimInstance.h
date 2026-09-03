@@ -89,6 +89,39 @@ public:
 	bool bHasOppositeAccel = false;
 
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	bool bIsFalling = false;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	bool bIsOnGround = false;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	bool bIsMovementModeFalling = false;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	bool bJumpStartedFromMove = false;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	bool bIsJumping = false;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	float TimeToJumpApex = 0.0f;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	float GravityZ = 0.0f;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	float MaxJumpHeight = 0.0f;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	float TimeToLand = 0.0f;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	float GroundDistance = 0.0f;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	float InitialJumpMaxHeight = 0.0f;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	float ExpectedGroundDistance = 0.0f;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	bool bGroundMovedFarther = false;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	bool bGroundMovedCloser = false;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	bool bFallLandEndNotified = false;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	float VerticalDisplacementSinceLastUpdate = 0.0f;
+
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	FVector Location;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float DisplacementSinceLastUpdate;
@@ -123,8 +156,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float SecondaryRotationInterpSpeed = 10.0f;
 
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	bool bIsFalling = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bIsRunning = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
@@ -164,9 +195,16 @@ protected:
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
 	void UpdatePivotState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
 
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void SetupJumpState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void SetupFallLandState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+
 public:
 
 	FORCEINLINE void NotifyPivotEnd() { bPivotExitNotified = true; }
+	FORCEINLINE void NotifyFallLandEnd() { bFallLandEndNotified = true; }
 
 	float ComputeLocomotionPlayRate(float CharacterSpeed) const;
 
@@ -185,6 +223,7 @@ private:
 	FORCEINLINE void UpdateRotationData(float DeltaSeconds);
 	FORCEINLINE void UpdateVelocityData(float DeltaSeconds);
 	FORCEINLINE void UpdateAccelerationData(float DeltaSeconds);
+	FORCEINLINE void UpdateJumpFallData(float DeltaSeconds);
 	FORCEINLINE void DetermineLocomotionState();
 	FORCEINLINE void SetupMoveState();
 	FORCEINLINE void UpdateLocomotionValues();

@@ -7,7 +7,6 @@
 
 class UMyAnimInstance;
 struct FAnimNodeReference;
-struct FSequenceEvaluatorReference;
 struct FAnimUpdateContext;
 class UAnimSequence;
 class UAnimSequenceBase;
@@ -40,10 +39,46 @@ protected:
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
 	void UpdatePivotAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
 
+	// Jump
+
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void SetupJumpAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void UpdateJumpAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+
+	// Fall
+
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void UpdateFallLoopAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void SetupFallLandAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void UpdateFallLandAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+
 private:
 
 	FORCEINLINE UAnimSequence* GetDesiredCycleSequence();
 	FORCEINLINE UAnimSequence* GetDesiredPivotSequence();
+
+	bool bJumpHeightCurveValid = false;
+	float JumpApexTime = 0.0f;
+	int32 JumpApexSampleIndex = INDEX_NONE;
+
+	bool CacheJumpHeightCurveData(const UAnimSequenceBase* Sequence);
+
+	// FallLoop 시퀀스 플레이어의 재생 상태 캐시다
+	// FallLand evaluator가 이 값을 이어받아 발 위상이 끊기지 않게 한다
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimSequenceBase> CachedFallLoopSequence;
+
+	float CachedFallLoopAccumulatedTime = 0.0f;
+
+	bool bUseFallLandDistanceMatching = false;
+	bool bFallLandDistanceCurveValid = false;
+	float FallLandStartDistance = 0.0f;
+	bool bGroundSnapDone = false;
+
+	bool CacheFallLandDistanceCurveData();
 
 protected:
 
@@ -89,6 +124,16 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Stop"))
 	TObjectPtr<UAnimSequence> RunStop;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Jump"))
+	TObjectPtr<UAnimSequence> Jump_FromMove;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Jump"))
+	TObjectPtr<UAnimSequence> Jump_FromIdle;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Fall"))
+	TObjectPtr<UAnimSequence> Fall_Loop;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Fall"))
+	TObjectPtr<UAnimSequence> Fall_Land;
+
 	UPROPERTY(EditDefaultsOnly, meta = (Category = "AnimSet|Pivot"))
 	TObjectPtr<UAnimSequence> WalkPivot_TurnRight;
 	UPROPERTY(EditDefaultsOnly, meta = (Category = "AnimSet|Pivot"))
@@ -102,6 +147,9 @@ protected:
 	bool bShouldRepivot = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly, meta = (Category = "Pivot"))
 	float PivotStateWeight;
+
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly, meta = (Category = "Fall"))
+	bool bShouldLoopFallLandEvaluator = true;
 
 	FVector PivotStartingAcceleration;
 };
