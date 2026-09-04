@@ -11,25 +11,20 @@ class UCameraComponent;
 class UInputAction;
 struct FInputActionValue;
 struct FInputActionInstance;
-class UMySkillSlotComponent;
+
+class UAnimMontage;
 enum class EWeaponSkillType : uint8;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
-/**
- *  A simple player-controllable third person character
- *  Implements a controllable orbiting camera
- */
 UCLASS(abstract)
 class AMyPlayerCharacter : public AMyCharacter
 {
 	GENERATED_BODY()
 
-	/** Camera boom positioning the camera behind the character */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	USpringArmComponent* CameraBoom;
 
-	/** Follow camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
 	
@@ -37,6 +32,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* JumpAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	UInputAction* EvadeAction;
 
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* MoveAction;
@@ -52,10 +50,45 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* QuitGameAction;
 
+
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	float TraversalReachDistance = 200.f;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	int32 ForwardTraceCount = 6;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	float TraversalTraceHighestZ = 130.f;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	float TraversalTraceLowestZ = -70.f;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	float ForwardHandOffset = 10.f;
+
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	float MaxHangHeightOffset = 400.f;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	float MinHangHeightOffset = 150.f;
+
+	UPROPERTY(EditAnywhere, Category = "Traversal", meta = (ClampMin = "1.0"))
+	float VaultTraceDepthStep = 60.f;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	float MaxVaultDepth = 200.f;
+	UPROPERTY(EditAnywhere, Category = "Traversal", meta = (ClampMin = "0.0"))
+	float VaultClearanceHeight = 100.f;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	float MaxVaultLandingDrop = 300.f;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	TObjectPtr<UAnimMontage> VaultMontage_ToGround;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	TObjectPtr<UAnimMontage> VaultMontage_ToAir;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	TArray<TObjectPtr<UAnimMontage>> EvadeSideMontages;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	TObjectPtr<UAnimMontage> RollMontage;
+
 public:
 
-	/** Constructor */
 	AMyPlayerCharacter(const FObjectInitializer& ObjectInitializer);
+
+	void OnTraversalWarpEnded(const FName& WarpTargetName);
 
 protected:
 
@@ -64,6 +97,7 @@ protected:
 protected:
 
 	void Move(const FInputActionValue& Value);
+	void StopMove(const FInputActionValue& Value);
 	void StartSprint(const FInputActionValue& Value);
 	void StopSprint(const FInputActionValue& Value);
 
@@ -71,9 +105,22 @@ protected:
 
 	void QuitGame(const FInputActionValue& Value);
 
-	// modified
-	// Sweeps a stack of spheres forward to find a traversable obstacle in front of the character.
-	void TraceTraversalObstacles();
+	bool TraceTraversalObstacles(FHitResult& OutHit, const FVector& TraceDirection);
+
+
+	bool TryVault(const FHitResult& ForwardHit, const FVector& VaultDirection);
+
+
+	void BuildTraversalQueryParams(FCollisionQueryParams& OutQuery, FCollisionObjectQueryParams& OutObject) const;
+
+	bool PlayEvadeMontage(const FVector& EvadeDirection);
+
+	bool DoTraverse(UAnimMontage* Montage, const FVector& FacingDirection, const TArray<AActor*>& ObstacleActors, FName TraversalWarpTarget, float TraversalTopZ);
+
+
+	FORCEINLINE void OnVaultTraversalEnded();
+
+	void OnTraversalMontageEnded(UAnimMontage* Montage, bool bInterrupted, uint64 TraversalId, FName TraversalWarpTarget);
 
 public:
 
@@ -82,6 +129,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoLook(float Yaw, float Pitch);
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void Evade();
 
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoJumpStart();
@@ -97,12 +147,29 @@ public:
 
 private:
 
-	UPROPERTY()
-	TObjectPtr<UMySkillSlotComponent> SkillSlotComponent;
+	FORCEINLINE void HandleWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType);
+	FORCEINLINE void HandleWeaponSkillReleased(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType);
+
+	// ���� ContactPoint�� �굵�� �ϴ� root transform�� ���Ѵ�.
+	bool GetHandAlignedWarpTransform(UAnimMontage* Montage, const FName& WarpTargetName, const FVector& ContactPoint, const FRotator& ApproachRotation, FTransform& OutTarget) const;
+
+	FORCEINLINE bool IsCapsuleBlockedAtLocation(const FVector& CapsuleBaseLocation) const;
+
+	void SetupTraversalCamera(float TraversalTopZ);
+	void RestoreTraversalCamera();
+
+	FORCEINLINE void RestoreTraversalPhysics();
+
+	FORCEINLINE FVector GetWorldMovementDirection(const FVector2D& MovementVector) const;
 
 private:
+	FVector2D CachedMovementVector = FVector2D::ZeroVector;
 
-	FORCEINLINE void HandleWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType);
-	FORCEINLINE void HandleWeaponSkillReleased(const FInputActionInstance& ActionInstance,  EWeaponSkillType SkillType);
+	uint64 ActiveTraversalId = 0;
+	TSet<uint64> PendingTraversalWarpIds;
+
+	TArray<TWeakObjectPtr<AActor>> TraversalIgnoredActors;
+
+	FVector CachedCameraBoomTargetOffset = FVector::ZeroVector;
 };
 

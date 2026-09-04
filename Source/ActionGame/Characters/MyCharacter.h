@@ -9,6 +9,7 @@
 class UMyCombatComponent;
 class UMyHealthComponent;
 class UMyStatsComponent;
+class UMotionWarpingComponent;
 
 UCLASS()
 class ACTIONGAME_API AMyCharacter : public ACharacter, public IGameplayTagAssetInterface
@@ -21,6 +22,7 @@ public:
 	FORCEINLINE UMyCombatComponent* GetCombatComponent() const { return CombatComponent; }
 	FORCEINLINE UMyHealthComponent* GetHealthComponent() const { return HealthComponent; }
 	FORCEINLINE UMyStatsComponent* GetStatsComponent() const { return StatsComponent; }
+	FORCEINLINE UMotionWarpingComponent* GetMotionWarpingComponent() const { return MotionWarpingComponent; }
 
 	void AddStatusTag(const FGameplayTag& Tag, int32 Count=1);
 	void RemoveStatusTag(const FGameplayTag& Tag, int32 Count=1);
@@ -55,6 +57,9 @@ private:
 
 	UPROPERTY(VisibleDefaultsOnly)
 	TObjectPtr<UMyStatsComponent> StatsComponent;
+
+	UPROPERTY(VisibleDefaultsOnly)
+	TObjectPtr<UMotionWarpingComponent> MotionWarpingComponent;
 
 	UPROPERTY(EditDefaultsOnly)
 	TSoftObjectPtr<UCurveTable> AttributeCurveTable;

@@ -11,6 +11,7 @@
 #include "GameMode/MyGameMode.h"
 #include "Engine/AssetManager.h"
 #include "Items/MyWeapon.h"
+#include "MotionWarpingComponent.h"
 
 AMyCharacter::AMyCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UMyCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
@@ -20,6 +21,7 @@ AMyCharacter::AMyCharacter(const FObjectInitializer& ObjectInitializer)
 	CombatComponent = CreateDefaultSubobject<UMyCombatComponent>(TEXT("CombatComponent"));
 	HealthComponent = CreateDefaultSubobject<UMyHealthComponent>(TEXT("HealthComponent"));
 	StatsComponent = CreateDefaultSubobject<UMyStatsComponent>(TEXT("StatsComponent"));
+	MotionWarpingComponent = CreateDefaultSubobject<UMotionWarpingComponent>(TEXT("MotionWarpingComponent"));
 
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
