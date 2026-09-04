@@ -29,7 +29,7 @@ void UMyAnimLayers::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 		return;
 	}
 
-	bShouldRepivot = MainAnimInstance->LocomotionStateLastUpdate == ELocomotionState::Pivot && 
+	MainAnimInstance->bShouldRepivot = MainAnimInstance->LocomotionStateLastUpdate == ELocomotionState::Pivot &&
 		MainAnimInstance->bAccelDotReversed &&
 		(PivotStartingAcceleration | MainAnimInstance->WorldAcceleration.GetSafeNormal2D()) < -0.5f;
 }
@@ -53,13 +53,13 @@ void UMyAnimLayers::SetupPivotAnim(const FAnimUpdateContext& Context, const FAni
 	PivotStartingAcceleration = MainAnimInstance->WorldAcceleration.GetSafeNormal2D();
 
 	UAnimSequence* Sequence = GetDesiredPivotSequence();
-	float BlendTime = bShouldRepivot ? 0.f : 0.2f;
+	float BlendTime = MainAnimInstance->bShouldRepivot ? 0.f : 0.2f;
 	USequenceEvaluatorLibrary::SetSequence(SequenceEvaluator, Sequence);
 
 	MainAnimInstance->PlayRate = MainAnimInstance->ComputeLocomotionPlayRate(MainAnimInstance->PivotInitialSpeed);
 	USequenceEvaluatorLibrary::SetExplicitTime(SequenceEvaluator, 0.0f);
 
-	bShouldRepivot = false;
+	MainAnimInstance->bShouldRepivot = false;
 }
 
 void UMyAnimLayers::UpdatePivotAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
@@ -111,7 +111,7 @@ void UMyAnimLayers::UpdateJumpAnim(const FAnimUpdateContext& Context, const FAni
 		return;
 	}
 
-	// ï¿½ï¿½ï¿½ ï¿½ß¿ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½Óµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ïµï¿½ apex ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ê´Â´ï¿½.
+	// »ó½Â Áß¿¡´Â ¿ø·¡ Àç»ý ¼Óµµ¸¦ À¯ÁöÇÏµÇ apex ÇÁ·¹ÀÓÀ» ³ÑÁö ¾Ê´Â´Ù.
 	if (MainAnimInstance->bIsJumping)
 	{
 		USequenceEvaluatorLibrary::AdvanceTime(Context, SequenceEvaluator, 1.0f);
@@ -124,7 +124,7 @@ void UMyAnimLayers::UpdateJumpAnim(const FAnimUpdateContext& Context, const FAni
 		return;
 	}
 
-	// ï¿½Ï°ï¿½ ï¿½ß¿ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Å¸ï¿½ï¿½ï¿½ Ä¿ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å½ï¿½ï¿½ï¿½Ñ´ï¿½
+	// ÇÏ°­ Áß¿¡´Â Áö¸é±îÁö ³²Àº °Å¸®·Î Ä¿ºêÀÇ °¨¼Ò ±¸°£À» ¿ªÅ½»öÇÑ´Ù
 	if (MainAnimInstance->bIsFalling)
 	{
 		const UAnimSequenceBase* Sequence = USequenceEvaluatorLibrary::GetSequence(SequenceEvaluator);
@@ -140,22 +140,22 @@ void UMyAnimLayers::UpdateJumpAnim(const FAnimUpdateContext& Context, const FAni
 			MainAnimInstance->InitialJumpMaxHeight,
 			JumpApexTime);
 
-		// ï¿½ï¿½ï¿½ï¿½ ï¿½Å¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ã°ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ê°ï¿½ ï¿½Ï°ï¿½, apex ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îµï¿½ ï¿½ï¿½ï¿½Æ°ï¿½ï¿½ï¿½ ï¿½Ê°ï¿½ ï¿½Ñ´ï¿½
+		// Áö¸é °Å¸® ³ëÀÌÁî·Î ½Ã°£ÀÌ ¿ªÇàÇÏÁö ¾Ê°Ô ÇÏ°í, apex ÀÌÀüÀ¸·Îµµ µ¹¾Æ°¡Áö ¾Ê°Ô ÇÑ´Ù
 		const float NewTime = FMath::Max3(CurrentTime, JumpApexTime, MatchedTime);
 
-		// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½éº¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Å½ï¿½ï¿½ï¿½ï¿½ ï¿½Ã°ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ç³Ê¶Ù¸ï¿½ ï¿½ï¿½ï¿½î°¡ Æ¤ï¿½ï¿½.
-		// ï¿½Ã°ï¿½ï¿½ï¿½ ï¿½×´ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï°ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½î¸¸ inertializationï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ñ´ï¿½
+		// ±âÁ¸ ¿¹»ó Áö¸éº¸´Ù ³ôÀº Áö¸éÀ» Å½ÁöÇØ ½Ã°£ÀÌ ¾ÕÀ¸·Î °Ç³Ê¶Ù¸é Æ÷Áî°¡ Æ¤´Ù.
+		// ½Ã°£Àº ±×´ë·Î Àû¿ëÇÏ°í Ãâ·Â Æ÷Áî¸¸ inertializationÀ¸·Î ¿¬°áÇÑ´Ù
 		const float ExplicitTimeDelta = NewTime - CurrentTime;
 		if (MainAnimInstance->bGroundMovedCloser && ExplicitTimeDelta > UE_KINDA_SMALL_NUMBER)
 		{
 			UMyAnimFunctionLibrary::RequestInertialization(Context, 0.2f);
 		}
-
+		
 		USequenceEvaluatorLibrary::SetExplicitTime(SequenceEvaluator, NewTime);
 		return;
 	}
 
-	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
+	// ÂøÁö ÈÄ
 	USequenceEvaluatorLibrary::AdvanceTime(Context, SequenceEvaluator, 1.0f);
 }
 
@@ -179,7 +179,7 @@ void UMyAnimLayers::SetupFallLandAnim(const FAnimUpdateContext& Context, const F
 
 	CacheFallLandDistanceCurveData();
 
-	// ï¿½Ì¹ï¿½ Land Å¬ï¿½ï¿½ï¿½ï¿½ ï¿½Å¸ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ì¸ï¿½ ï¿½ï¿½Ù·ï¿½ ï¿½ï¿½ï¿½ï¿½ Å¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ñ´ï¿½
+	// ÀÌ¹Ì Land Å¬¸³ÀÇ °Å¸® ¹üÀ§ ¾ÈÀÌ¸é °ð¹Ù·Î ÂøÁö Å¬¸³À¸·Î ½ÃÀÛÇÑ´Ù
 	if (bFallLandDistanceCurveValid && MainAnimInstance->GroundDistance <= FallLandStartDistance)
 	{
 		bUseFallLandDistanceMatching = true;
@@ -191,7 +191,7 @@ void UMyAnimLayers::SetupFallLandAnim(const FAnimUpdateContext& Context, const F
 		return;
 	}
 
-	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ì¸ï¿½ FallLoopï¿½ï¿½ ï¿½Ì¾î¼­ ï¿½Ýºï¿½ ï¿½ï¿½ï¿½ï¿½Ñ´ï¿½
+	// ¾ÆÁ÷ ¹üÀ§ ¹ÛÀÌ¸é FallLoopÀ» ÀÌ¾î¼­ ¹Ýº¹ Àç»ýÇÑ´Ù
 	bUseFallLandDistanceMatching = false;
 	bShouldLoopFallLandEvaluator = true;
 	UMyAnimFunctionLibrary::SetSequenceEvaluatorLooping(SequenceEvaluator, true);
@@ -227,7 +227,7 @@ void UMyAnimLayers::UpdateFallLandAnim(const FAnimUpdateContext& Context, const 
 		return;
 	}
 
-	// Land Å¬ï¿½ï¿½ï¿½ï¿½ ï¿½Å¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½
+	// Land Å¬¸³ÀÇ °Å¸® ¹üÀ§·Î Ã³À½ ÁøÀÔÇÑ °æ¿ì
 	if (!bUseFallLandDistanceMatching &&
 		bFallLandDistanceCurveValid &&
 		MainAnimInstance->GroundDistance <= FallLandStartDistance)
@@ -248,7 +248,7 @@ void UMyAnimLayers::UpdateFallLandAnim(const FAnimUpdateContext& Context, const 
 		return;
 	}
 
-	// ï¿½ï¿½ï¿½ï¿½ Ä¿ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ì¶ï¿½ FallLoopï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½Ýºï¿½ ï¿½ï¿½ï¿½ï¿½Ñ´ï¿½
+	// ¾ÆÁ÷ Ä¿ºê ¹üÀ§ ¹ÛÀÌ¶ó FallLoopÀ» °è¼Ó ¹Ýº¹ Àç»ýÇÑ´Ù
 	bShouldLoopFallLandEvaluator = true;
 	UMyAnimFunctionLibrary::SetSequenceEvaluatorLooping(SequenceEvaluator, true);
 	USequenceEvaluatorLibrary::AdvanceTime(Context, SequenceEvaluator, 1.0f);
@@ -331,7 +331,7 @@ bool UMyAnimLayers::CacheFallLandDistanceCurveData()
 	bFallLandDistanceCurveValid = false;
 	FallLandStartDistance = 0.0f;
 
-	// FAnimCurveBufferAccess ï¿½ï¿½ï¿½ï¿½ï¿½Ú°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ Ã¼Å© ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ´ï¿½
+	// FAnimCurveBufferAccess »ý¼ºÀÚ°¡ ½ÃÄö½º¸¦ ³Î Ã¼Å© ¾øÀÌ ¿ªÂüÁ¶ÇÑ´Ù
 	if (!Fall_Land)
 	{
 		return false;

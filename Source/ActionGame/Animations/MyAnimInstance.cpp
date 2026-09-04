@@ -60,10 +60,10 @@ void UMyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	InputVector = UKismetMathLibrary::ClampVectorSize(InputVector, 0.f, 1.f);
 
 	bIsOnGround = MovementComponent->IsMovingOnGround();
-	bIsMovementModeFalling = MovementComponent->IsFalling();
+	MovementMode = MovementComponent->MovementMode;
 	MaxJumpHeight = MovementComponent->GetMaxJumpHeightWithJumpTime();
 	GravityZ = MovementComponent->GetGravityZ();
-	if (bIsMovementModeFalling)
+	if (MovementMode == MOVE_Falling)
 	{
 		const float GroundRangeBase = FMath::Max(MaxJumpHeight, InitialJumpMaxHeight);
 		const float FloorTraceDistance = GroundRangeBase + GroundDistanceErrorTolerance + 1.0f;
@@ -162,7 +162,7 @@ void UMyAnimInstance::UpdateJumpFallData(float DeltaSeconds)
 {
 	bool bWasInAirLastUpdate = bIsJumping || bIsFalling;
 	bIsJumping = bIsFalling = false;
-	if (bIsMovementModeFalling)
+	if (MovementMode == MOVE_Falling)
 	{
 		bIsJumping = WorldVelocity.Z > 0.0f;
 		bIsFalling = !bIsJumping;
@@ -215,7 +215,7 @@ void UMyAnimInstance::UpdateJumpFallData(float DeltaSeconds)
 
 	TimeToJumpApex = bIsJumping && (-GravityZ) > UE_KINDA_SMALL_NUMBER ? WorldVelocity.Z / (-GravityZ) : 0.0f;
 
-	if (bIsMovementModeFalling && (-GravityZ) > UE_SMALL_NUMBER)
+	if (MovementMode == MOVE_Falling && (-GravityZ) > UE_SMALL_NUMBER)
 	{
 		const float Discriminant = WorldVelocity.Z * WorldVelocity.Z + 2.0f * (-GravityZ) * GroundDistance;
 
@@ -288,7 +288,7 @@ bool UMyAnimInstance::CanEnterPivot() const
 
 bool UMyAnimInstance::ShouldExitPivot() const
 {
-	if (!bHasAcceleration)
+	if (!bHasAcceleration || bHasRootMotion)
 	{
 		return true;
 	}
@@ -332,7 +332,8 @@ void UMyAnimInstance::SetupMoveState()
 
 float UMyAnimInstance::ComputeLocomotionPlayRate(float CharacterSpeed) const
 {
-	return UKismetMathLibrary::SafeDivide(CharacterSpeed, FMath::Clamp(GetCurveValue(TEXT("MoveData_Speed")), 50.f, 1000.f));
+	float NewPlayRate = UKismetMathLibrary::SafeDivide(CharacterSpeed, FMath::Clamp(GetCurveValue(TEXT("MoveData_Speed")), 50.f, 1000.f));
+	return FMath::Max(0.8f, NewPlayRate);
 }
 
 void UMyAnimInstance::UpdateLocomotionValues()
@@ -393,10 +394,6 @@ void UMyAnimInstance::SetupIdleState(const FAnimUpdateContext& Context, const FA
 }
 
 void UMyAnimInstance::UpdateIdleState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
-{
-}
-
-void UMyAnimInstance::SetupMoveState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
 {
 }
 

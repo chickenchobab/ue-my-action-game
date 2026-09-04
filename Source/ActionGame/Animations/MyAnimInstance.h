@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Animation/AnimInstance.h"
+#include "Engine/EngineTypes.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Animation/CachedAnimData.h"
 #include "MyAnimInstance.generated.h"
@@ -93,7 +94,7 @@ public:
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bIsOnGround = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	bool bIsMovementModeFalling = false;
+	TEnumAsByte<EMovementMode> MovementMode = MOVE_None;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bJumpStartedFromMove = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
@@ -167,6 +168,8 @@ public:
 	float PivotInitialSpeed = 0.f;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bPivotExitNotified = false;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	bool bShouldRepivot = false;
 
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float IdleStateWeight;
@@ -181,9 +184,6 @@ protected:
 	void SetupIdleState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
 	void UpdateIdleState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
-
-	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
-	void SetupMoveState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
 
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
 	void UpdateWalkState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);

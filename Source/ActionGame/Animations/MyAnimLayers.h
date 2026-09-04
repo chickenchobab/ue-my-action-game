@@ -144,8 +144,6 @@ protected:
 	TObjectPtr<UAnimSequence> RunPivot_TurnLeft;
 
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly, meta = (Category = "Pivot"))
-	bool bShouldRepivot = false;
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly, meta = (Category = "Pivot"))
 	float PivotStateWeight;
 
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly, meta = (Category = "Fall"))
