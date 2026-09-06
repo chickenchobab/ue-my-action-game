@@ -16,6 +16,13 @@ struct FInputActionInstance;
 class UAnimMontage;
 enum class EWeaponSkillType : uint8;
 
+enum class ETraversalHandAlignment : uint8
+{
+	LeftHand,
+	RightHand,
+	BothHands
+};
+
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
 UCLASS(abstract)
@@ -41,6 +48,9 @@ protected:
 	UInputAction* MoveAction;
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* SprintAction;
+	
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* ClimbAction;
 
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* LookAction;
@@ -51,7 +61,8 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* QuitGameAction;
 
-
+	UPROPERTY(EditAnywhere, Category = "Input")
+	TObjectPtr<UInputMappingContext> ClimbMappingContext;
 	UPROPERTY(EditAnywhere, Category = "Input")
 	TObjectPtr<UInputMappingContext> OnGroundMappingContext;
 
@@ -60,7 +71,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Traversal")
 	int32 ForwardTraceCount = 6;
 	UPROPERTY(EditAnywhere, Category = "Traversal")
-	float TraversalTraceHighestZ = 130.f;
+	float TraversalTraceHighestZ = 200.f;
 	UPROPERTY(EditAnywhere, Category = "Traversal")
 	float TraversalTraceLowestZ = -70.f;
 
@@ -79,6 +90,13 @@ protected:
 	float VaultClearanceHeight = 100.f;
 	UPROPERTY(EditAnywhere, Category = "Traversal")
 	float MaxVaultLandingDrop = 300.f;
+
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	TObjectPtr<UAnimMontage> HangMontage_FromGround;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	TObjectPtr<UAnimMontage> HangMontage_FromAir;
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	TObjectPtr<UAnimMontage> MantleMontage;
 	UPROPERTY(EditAnywhere, Category = "Traversal")
 	TObjectPtr<UAnimMontage> VaultMontage_ToGround;
 	UPROPERTY(EditAnywhere, Category = "Traversal")
@@ -96,6 +114,7 @@ public:
 
 protected:
 
+	virtual void BeginPlay() override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
 
@@ -106,22 +125,27 @@ protected:
 	void StartSprint(const FInputActionValue& Value);
 	void StopSprint(const FInputActionValue& Value);
 
+	void Climb(const FInputActionValue& Value);
+
 	void Look(const FInputActionValue& Value);
 
 	void QuitGame(const FInputActionValue& Value);
 
 	bool TraceTraversalObstacles(FHitResult& OutHit, const FVector& TraceDirection);
 
+	bool TryHang(const FHitResult& ForwardHit);
+	bool TryMantle();
 
 	bool TryVault(const FHitResult& ForwardHit, const FVector& VaultDirection);
-
 
 	void BuildTraversalQueryParams(FCollisionQueryParams& OutQuery, FCollisionObjectQueryParams& OutObject) const;
 
 	bool PlayEvadeMontage(const FVector& EvadeDirection);
 
-	bool DoTraverse(UAnimMontage* Montage, const FVector& FacingDirection, const TArray<AActor*>& ObstacleActors, FName TraversalWarpTarget, float TraversalTopZ);
+	bool DoTraverse(UAnimMontage* Montage, const FVector& FacingDirection, const TArray<AActor*>& ObstacleActors, FName TraversalWarpTarget, float TraversalTopHeightOffset);
 
+	FORCEINLINE void OnHangTraversalEnded(bool bTraversalSucceeded);
+	FORCEINLINE void OnMantleTraversalEnded(bool bTraversalSucceeded);
 	FORCEINLINE void OnVaultTraversalEnded(bool bTraversalSucceeded);
 
 	void OnTraversalMontageEnded(UAnimMontage* Montage, bool bInterrupted, uint64 TraversalId, FName TraversalWarpTarget);
@@ -154,14 +178,15 @@ private:
 	FORCEINLINE void HandleWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType);
 	FORCEINLINE void HandleWeaponSkillReleased(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType);
 
-	// ï¿½ï¿½ï¿½ï¿½ ContactPointï¿½ï¿½ ï¿½êµµï¿½ï¿½ ï¿½Ï´ï¿½ root transformï¿½ï¿½ ï¿½ï¿½ï¿½Ñ´ï¿½.
-	bool GetHandAlignedWarpTransform(UAnimMontage* Montage, const FName& WarpTargetName, const FVector& ContactPoint, const FRotator& ApproachRotation, FTransform& OutTarget) const;
+	// ¼ÕÀÌ ContactPoint¿¡ ´êµµ·Ï ÇÏ´Â root transformÀ» ±¸ÇÑ´Ù.
+	bool GetHandAlignedWarpTransform(UAnimMontage* Montage, const FName& WarpTargetName, const FVector& ContactPoint, const FRotator& ApproachRotation, ETraversalHandAlignment HandAlignment, FTransform& OutTarget) const;
 
 	FORCEINLINE bool IsCapsuleBlockedAtLocation(const FVector& CapsuleBaseLocation) const;
 
-	void SetupTraversalCamera(float TraversalTopZ);
+	void SetupTraversalCamera(float TraversalTopHeightOffset);
 	void RestoreTraversalCamera();
 
+	FORCEINLINE void RestoreTraversalCollision();
 	FORCEINLINE void RestoreTraversalPhysics();
 
 	FORCEINLINE FVector GetWorldMovementDirection(const FVector2D& MovementVector) const;
@@ -169,11 +194,15 @@ private:
 private:
 	FVector2D CachedMovementVector = FVector2D::ZeroVector;
 
+	FHitResult CachedHangForwardHit;
+	FHitResult CachedHangTopHit;
+
 	uint64 ActiveTraversalId = 0;
 	TSet<uint64> PendingTraversalWarpIds;
 
 	TArray<TWeakObjectPtr<AActor>> TraversalIgnoredActors;
 
-	FVector CachedCameraBoomTargetOffset = FVector::ZeroVector;
+	FVector DefaultCameraBoomTargetOffset = FVector::ZeroVector;
+	bool bTraversalCameraActive = false;
 };
 

@@ -32,6 +32,12 @@ protected:
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
 	void UpdateCycleAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
 
+
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void SetupHangMoveAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void UpdateHangMoveAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+
 	// Pivot
 
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
@@ -58,6 +64,7 @@ protected:
 private:
 
 	FORCEINLINE UAnimSequence* GetDesiredCycleSequence();
+	FORCEINLINE UAnimSequence* GetDesiredHangMoveSequence();
 	FORCEINLINE UAnimSequence* GetDesiredPivotSequence();
 
 	bool bJumpHeightCurveValid = false;
@@ -133,6 +140,17 @@ protected:
 	TObjectPtr<UAnimSequence> Fall_Loop;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Fall"))
 	TObjectPtr<UAnimSequence> Fall_Land;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Hang"))
+	TObjectPtr<UAnimSequence> HangIdle;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Hang"))
+	TObjectPtr<UAnimSequence> HangMoveUp;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Hang"))
+	TObjectPtr<UAnimSequence> HangMoveDown;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Hang"))
+	TObjectPtr<UAnimSequence> HangMoveLeft;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Hang"))
+	TObjectPtr<UAnimSequence> HangMoveRight;
 
 	UPROPERTY(EditDefaultsOnly, meta = (Category = "AnimSet|Pivot"))
 	TObjectPtr<UAnimSequence> WalkPivot_TurnRight;

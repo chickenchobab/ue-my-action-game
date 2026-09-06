@@ -43,6 +43,37 @@ void UMyAnimLayers::UpdateCycleAnim(const FAnimUpdateContext& Context, const FAn
 {
 }
 
+void UMyAnimLayers::SetupHangMoveAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+{
+	FSequenceEvaluatorReference SequenceEvaluator;
+	bool bSuccessed;
+	USequenceEvaluatorLibrary::ConvertToSequenceEvaluatorPure(Node, SequenceEvaluator, bSuccessed);
+	if (!bSuccessed)
+	{
+		return;
+	}
+
+	UAnimSequence* Sequence = GetDesiredHangMoveSequence();
+	USequenceEvaluatorLibrary::SetSequence(SequenceEvaluator, Sequence);
+}
+
+void UMyAnimLayers::UpdateHangMoveAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+{
+	FSequenceEvaluatorReference SequenceEvaluator;
+	bool bSuccessed;
+	USequenceEvaluatorLibrary::ConvertToSequenceEvaluatorPure(Node, SequenceEvaluator, bSuccessed);
+	if (!bSuccessed)
+	{
+		return;
+	}
+
+	UAnimSequence* Sequence = GetDesiredHangMoveSequence();
+	USequenceEvaluatorLibrary::SetSequenceWithInertialBlending(Context, SequenceEvaluator, Sequence, 0.2f);
+	
+	MainAnimInstance->PlayRate = MainAnimInstance->ComputeCycleAnimPlayRate(FMath::Abs(MainAnimInstance->LocalVelocity.Y));
+	USequenceEvaluatorLibrary::AdvanceTime(Context, SequenceEvaluator, MainAnimInstance->PlayRate);
+}
+
 void UMyAnimLayers::SetupPivotAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
 {
 	FSequenceEvaluatorReference SequenceEvaluator;
@@ -263,6 +294,11 @@ UAnimSequence* UMyAnimLayers::GetDesiredCycleSequence()
 	{
 		return Run;
 	}
+}
+
+UAnimSequence* UMyAnimLayers::GetDesiredHangMoveSequence()
+{
+	return MainAnimInstance->LocalVelocity.Y >= 0.0f ? HangMoveRight : HangMoveLeft;
 }
 
 UAnimSequence* UMyAnimLayers::GetDesiredPivotSequence()

@@ -22,73 +22,17 @@
 #include "Components/CapsuleComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "BonePose.h"
-#include "DrawDebugHelpers.h"
 
-static bool bShouldDrawTraversalTrace = true;
-static const float TraversalDebugDrawTime = 2.0f;
-
-// Move == Traversal
+// modified: traversal ½Ã°¢È­ ÇÔ¼ö¿Í È£ÃâºÎ¸¦ Á¦°ÅÇß´Ù.
+// Move = Traversal
+static const FName HangJumpWarpTarget(TEXT("Hang_Jump"));
+static const FName MantleJumpWarpTarget(TEXT("Mantle_Jump"));
+static const FName MantleMoveWarpTarget(TEXT("Mantle_Move"));
 static const FName VaultJumpWarpTarget(TEXT("Vault_Jump"));
 static const FName VaultMoveWarpTarget(TEXT("Vault_Move"));
 
-static const FName TraversalHandBoneName(TEXT("hand_l"));
-
-static inline void DrawTraversalSweep(UWorld* World, const FVector& Start, const FVector& End, float Radius, const FColor& Color)
-{
-	if (bShouldDrawTraversalTrace)
-	{
-		DrawDebugSphere(World, Start, Radius, 12, Color, false, TraversalDebugDrawTime, 0, 1.0f);
-		DrawDebugSphere(World, End, Radius, 12, Color, false, TraversalDebugDrawTime, 0, 1.0f);
-	}
-}
-
-static inline void DrawTraversalImpact(UWorld* World, const FVector& ImpactPoint, float Radius)
-{
-	if (bShouldDrawTraversalTrace)
-	{
-		DrawDebugSphere(World, ImpactPoint, Radius, 12, FColor::Yellow, false, TraversalDebugDrawTime, 0, 2.0f);
-	}
-}
-
-static inline void DrawVaultDepthTrace(UWorld* World, const FVector& Start, const FVector& End,
-	const FHitResult& Hit, bool bHit, float Radius)
-{
-	if (!bShouldDrawTraversalTrace)
-	{
-		return;
-	}
-
-	DrawDebugSphere(World, Start, Radius, 12, FColor::Cyan, false, TraversalDebugDrawTime, 0, 1.0f);
-	DrawDebugSphere(World, End, Radius, 12, FColor::Blue, false, TraversalDebugDrawTime, 0, 1.0f);
-	DrawDebugLine(World, Start, End, bHit ? FColor::Green : FColor::Red, false, TraversalDebugDrawTime, 0, 1.0f);
-	if (bHit)
-	{
-		DrawDebugSphere(World, Hit.ImpactPoint, Radius, 12, FColor::Yellow, false, TraversalDebugDrawTime, 0, 2.0f);
-	}
-}
-
-static inline void DrawVaultClearanceTrace(UWorld* World, const FVector& PreviousPoint,
-	const FVector& CurrentPoint, float Radius)
-{
-	if (!bShouldDrawTraversalTrace)
-	{
-		return;
-	}
-
-	DrawDebugSphere(World, PreviousPoint, Radius, 12, FColor::Purple, false, TraversalDebugDrawTime, 0, 4.0f);
-	DrawDebugSphere(World, CurrentPoint, Radius, 12, FColor::Purple, false, TraversalDebugDrawTime, 0, 4.0f);
-	DrawDebugLine(World, PreviousPoint, CurrentPoint, FColor::Purple, false, TraversalDebugDrawTime, 0, 4.0f);
-}
-
-static inline void DrawVaultLandHit(UWorld* World, const FHitResult& LandHit, float Radius)
-{
-	if (bShouldDrawTraversalTrace && LandHit.bBlockingHit)
-	{
-		const FColor LandHitColor(255, 128, 0);
-		DrawDebugSphere(World, LandHit.ImpactPoint, Radius, 16, LandHitColor, false, TraversalDebugDrawTime, 0, 3.0f);
-		DrawDebugDirectionalArrow(World, LandHit.ImpactPoint, LandHit.ImpactPoint + LandHit.ImpactNormal * Radius * 2.f, Radius, LandHitColor, false, TraversalDebugDrawTime, 0, 2.0f);
-	}
-}
+static const FName LeftHandBoneName(TEXT("hand_l"));
+static const FName RightHandBoneName(TEXT("hand_r"));
 
 AMyPlayerCharacter::AMyPlayerCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -97,7 +41,7 @@ AMyPlayerCharacter::AMyPlayerCharacter(const FObjectInitializer& ObjectInitializ
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->TargetArmLength = 400.0f;
 	CameraBoom->bUsePawnControlRotation = true;
-	CameraBoom->SetUsingAbsoluteRotation(true); // Animation ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Ä³ï¿½ï¿½ï¿½ï¿½ È¸ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï¹Ç·ï¿½
+	CameraBoom->SetUsingAbsoluteRotation(true); // Animation ·ÎÁ÷¿¡¼­ Ä³¸¯ÅÍ È¸ÀüÀ» ¼öÇàÇÏ¹Ç·Î
 
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
@@ -106,8 +50,21 @@ AMyPlayerCharacter::AMyPlayerCharacter(const FObjectInitializer& ObjectInitializ
 	CachedWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
 }
 
+void AMyPlayerCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (CameraBoom != nullptr)
+	{
+		DefaultCameraBoomTargetOffset = CameraBoom->TargetOffset;
+	}
+}
+
 void AMyPlayerCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
 {
+	const bool bFellFromClimbing = PrevMovementMode == MOVE_Custom
+		&& PreviousCustomMode == static_cast<uint8>(EMyCustomMovementMode::Climbing)
+		&& GetCharacterMovement()->MovementMode == MOVE_Falling;
 
 	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
 
@@ -116,6 +73,10 @@ void AMyPlayerCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, u
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
 			ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 		{
+			if (ClimbMappingContext != nullptr)
+			{
+				Subsystem->RemoveMappingContext(ClimbMappingContext);
+			}
 			if (OnGroundMappingContext != nullptr)
 			{
 				Subsystem->RemoveMappingContext(OnGroundMappingContext);
@@ -129,6 +90,24 @@ void AMyPlayerCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, u
 					Subsystem->AddMappingContext(OnGroundMappingContext, 0);
 				}
 			}
+			else if (MovementComponent->MovementMode == MOVE_Custom
+				&& MovementComponent->CustomMovementMode == static_cast<uint8>(EMyCustomMovementMode::Climbing))
+			{
+				if (ClimbMappingContext != nullptr)
+				{
+					Subsystem->AddMappingContext(ClimbMappingContext, 0);
+				}
+			}
+		}
+	}
+
+	if (!bFellFromClimbing)
+	{
+		return;
+	}
+
+	CachedHangForwardHit = FHitResult();
+	CachedHangTopHit = FHitResult();
 	RestoreTraversalCamera();
 }
 
@@ -148,6 +127,7 @@ void AMyPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AMyPlayerCharacter::Look);
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AMyPlayerCharacter::StartSprint);
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AMyPlayerCharacter::StopSprint);
+		EnhancedInputComponent->BindAction(ClimbAction, ETriggerEvent::Triggered, this, &ThisClass::Climb);
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AMyPlayerCharacter::Look);
@@ -195,6 +175,38 @@ void AMyPlayerCharacter::StartSprint(const FInputActionValue& Value)
 void AMyPlayerCharacter::StopSprint(const FInputActionValue& Value)
 {
 	bIsSprintActive = false;
+}
+
+void AMyPlayerCharacter::Climb(const FInputActionValue& Value)
+{
+	if (GetStatsComponent())
+	{
+		if (!GetStatsComponent()->CanMove())
+		{
+			return;
+		}
+	}
+
+	UMyCharacterMovementComponent* MovementComponent = Cast<UMyCharacterMovementComponent>(GetCharacterMovement());
+	if (!MovementComponent || !MovementComponent->IsClimbing())
+	{
+		return;
+	}
+
+	// TODO: ÇöÀç´Â ³­°£¿¡¼­ÀÇ ¼öÆò ÀÌµ¿¸¸ ±¸ÇöÇÔ
+	// º®¿¡ ¼ÕÀâÀÌµéÀ» ¹èÄ¡ÇÏ°í ¼öÁ÷ ÀÌµ¿µµ ±¸ÇöÇÒ ¿¹Á¤
+	const FVector2D ClimbInput = Value.Get<FVector2D>();
+	constexpr float MantleInputThreshold = 0.5f;
+	if (ClimbInput.Y > MantleInputThreshold)
+	{
+		TryMantle();
+		return;
+	}
+
+	if (!FMath::IsNearlyZero(ClimbInput.X))
+	{
+		AddMovementInput(MovementComponent->GetClimbingRightDirection(), ClimbInput.X);
+	}
 }
 
 void AMyPlayerCharacter::Look(const FInputActionValue& Value)
@@ -283,6 +295,15 @@ void AMyPlayerCharacter::DoJumpStart()
 		}
 	}
 
+	FHitResult ForwardHit;
+	if (!CachedMovementVector.IsNearlyZero() && TraceTraversalObstacles(ForwardHit, GetActorForwardVector()))
+	{
+		if (TryHang(ForwardHit))
+		{
+			return;
+		}
+	}
+
 	Jump();
 }
 
@@ -328,7 +349,7 @@ bool AMyPlayerCharacter::PlayEvadeMontage(const FVector& EvadeDirection)
 		SetActorRotation(EvadeDirection.Rotation());
 	}
 
-	UAnimMontage* EvadeMontage = RollMontage; // TODO: Evade montage ï¿½ï¿½ï¿½ï¿½(lock or unlock)
+	UAnimMontage* EvadeMontage = RollMontage; // TODO: Evade montage ¼¼ÆÃ(lock or unlock)
 
 	UAnimInstance* AnimInstance = (GetMesh() != nullptr) ? GetMesh()->GetAnimInstance() : nullptr;
 	if (AnimInstance == nullptr)
@@ -345,6 +366,166 @@ bool AMyPlayerCharacter::PlayEvadeMontage(const FVector& EvadeDirection)
 	return true;
 }
 
+bool AMyPlayerCharacter::TryHang(const FHitResult& ForwardHit)
+{
+	UWorld* World = GetWorld();
+	UMotionWarpingComponent* WarpingComponent = GetMotionWarpingComponent();
+	if (World == nullptr || WarpingComponent == nullptr)
+	{
+		return false;
+	}
+
+	// ÀÌº¸´Ù ´©¿î ¸éÀº °É¾î ¿Ã¶ó°¥ °æ»ç¸éÀÌÁö traversal ´ë»óÀÌ ¾Æ´Ï´Ù.
+	// ¾Õ¸é°ú À­¸é¿¡ ¼­·Î ´Ù¸¥ °æ»ç ±âÁØÀ» Àû¿ëÇÑ´Ù.
+	constexpr float MinFaceNormalZ = 0.7f;
+	constexpr float MinTopNormalZ = 0.94f;
+
+	const FVector ActorLocation = GetActorLocation();
+
+	// ºñ½ºµëÇÑ º®¿¡¼­´Â ¸é ¹ý¼±ÀÌ ¾×ÅÍ forwardº¸´Ù Á¤È®ÇÏ´Ù.
+	FVector ApproachDirection = -ForwardHit.ImpactNormal;
+	ApproachDirection.Z = 0.f;
+	if (!ApproachDirection.Normalize())
+	{
+		ApproachDirection = GetActorForwardVector();
+	}
+
+	FCollisionQueryParams QueryParams;
+	FCollisionObjectQueryParams ObjectQueryParams;
+	BuildTraversalQueryParams(QueryParams, ObjectQueryParams);
+
+	const FRotator ApproachRotation = ApproachDirection.Rotation();
+
+	const float TopTraceStartZ = ActorLocation.Z + TraversalTraceHighestZ;
+	const float TopTraceEndZ = ActorLocation.Z + TraversalTraceLowestZ;
+
+	const float FaceNormalZ = ForwardHit.ImpactNormal.Z;
+	const float FaceNormalSize2D = ForwardHit.ImpactNormal.Size2D();
+
+	if (FMath::IsNearlyZero(FaceNormalSize2D))
+	{
+		UE_LOG(LogTemp, Display, TEXT("Traversal: rejected, face normal is vertical (floor or ceiling, not a wall)"));
+		return false;
+	}
+
+	// ÀÌ°É ³ÑÀ¸¸é ±×³É °É¾î ¿Ã¶ó°¥ ¼ö ÀÖ´Â °æ»ç¸é.
+	if (FaceNormalZ >= MinFaceNormalZ)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Traversal: rejected, face is a walkable slope (normal.Z=%.2f)"), FaceNormalZ);
+		return false;
+	}
+
+	const float DeltaZ = TopTraceStartZ - ForwardHit.ImpactPoint.Z;
+	const float TopTraceForwardOffset = DeltaZ * (FaceNormalZ / FaceNormalSize2D);
+
+	const FVector TopTraceXY = ForwardHit.ImpactPoint + ApproachDirection * TopTraceForwardOffset;
+	const FVector TopTraceStart(TopTraceXY.X, TopTraceXY.Y, TopTraceStartZ);
+	const FVector TopTraceEnd(TopTraceXY.X, TopTraceXY.Y, TopTraceEndZ);
+
+	FHitResult TopHit;
+	const bool bTopHit = World->LineTraceSingleByObjectType(TopHit, TopTraceStart, TopTraceEnd, ObjectQueryParams, QueryParams);
+	if (!bTopHit)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Traversal: rejected, no top found within the probe range"));
+		return false;
+	}
+
+	if (TopHit.bStartPenetrating)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Traversal: rejected, top trace started inside geometry (obstacle taller than the probe range)"));
+		return false;
+	}
+
+	if (TopHit.ImpactNormal.Z < MinTopNormalZ)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Traversal: rejected, top surface too steep (normal.Z=%.2f)"), TopHit.ImpactNormal.Z);
+		return false;
+	}
+
+	const float TopHeightOffset = TopHit.ImpactPoint.Z - ActorLocation.Z;
+
+	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const float MaxJumpableTopOffset = GetCharacterMovement()->GetMaxJumpHeight() - CapsuleHalfHeight;
+
+	if (TopHeightOffset <= MaxJumpableTopOffset)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Traversal: rejected, top is within normal jump height (TopHeightOffset=%.1f <= MaxJumpableTopOffset=%.1f)"),
+			TopHeightOffset, MaxJumpableTopOffset);
+		return false;
+	}
+
+	if (TopHeightOffset > MaxHangHeightOffset)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Traversal: rejected, top too high (TopHeightOffset=%.1f > MaxHangHeightOffset=%.1f)"), TopHeightOffset, MaxHangHeightOffset);
+		return false;
+	}
+
+	if (TopHeightOffset >= MinHangHeightOffset)
+	{
+		// TODO: hang montage ¼±ÅÃ
+		FTransform HangJumpTarget;
+		GetHandAlignedWarpTransform(HangMontage_FromGround, HangJumpWarpTarget, TopHit.ImpactPoint, ApproachRotation, ETraversalHandAlignment::BothHands, HangJumpTarget);
+
+		WarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(HangJumpWarpTarget, HangJumpTarget.GetLocation(), HangJumpTarget.Rotator());
+
+		const bool bTraversalStarted = DoTraverse(HangMontage_FromGround, ApproachDirection,{ ForwardHit.GetActor(), TopHit.GetActor() }, HangJumpWarpTarget, TopHit.ImpactPoint.Z - ActorLocation.Z);
+		if (bTraversalStarted)
+		{
+			CachedHangForwardHit = ForwardHit;
+			CachedHangTopHit = TopHit;
+		}
+
+		return bTraversalStarted;
+	}
+
+	return false;
+}
+
+bool AMyPlayerCharacter::TryMantle()
+{
+	UMyCharacterMovementComponent* MovementComponent = Cast<UMyCharacterMovementComponent>(GetCharacterMovement());
+	UCapsuleComponent* Capsule = GetCapsuleComponent();
+	UMotionWarpingComponent* WarpingComponent = GetMotionWarpingComponent();
+	UWorld* World = GetWorld();
+	if (!MovementComponent || !MovementComponent->IsClimbing() || !Capsule || !WarpingComponent || !World)
+	{
+		return false;
+	}
+
+	// PhysClimbing¿¡¼­ ¾÷µ¥ÀÌÆ®ÇÏ´Â Á¤º¸µé
+	const FHitResult ForwardHit = MovementComponent->GetClimbingWallHit();
+	const FHitResult TopHit = MovementComponent->GetClimbingLedgeHit();
+
+	if (!ForwardHit.bBlockingHit || !TopHit.bBlockingHit || TopHit.ImpactNormal.Z <= UE_KINDA_SMALL_NUMBER)
+	{
+		return false;
+	}
+
+	FVector ApproachDirection = -ForwardHit.ImpactNormal;
+	ApproachDirection.Z = 0.0f;
+	if (!ApproachDirection.Normalize())
+	{
+		return false;
+	}
+
+	const FVector MantleMoveLocation = TopHit.ImpactPoint + ApproachDirection;
+
+	if (IsCapsuleBlockedAtLocation(MantleMoveLocation))
+	{
+		UE_LOG(LogTemp, Display, TEXT("Traversal: mantle rejected, no room for the capsule at %s"),
+			*MantleMoveLocation.ToCompactString());
+		return false;
+	}
+
+	FTransform MantleJumpTarget;
+	GetHandAlignedWarpTransform(MantleMontage, MantleJumpWarpTarget, MantleMoveLocation, ApproachDirection.Rotation(), ETraversalHandAlignment::BothHands, MantleJumpTarget);
+
+	WarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(MantleJumpWarpTarget, MantleJumpTarget.GetLocation(), MantleJumpTarget.Rotator());
+	WarpingComponent->AddOrUpdateWarpTargetFromLocation(MantleMoveWarpTarget, MantleMoveLocation);
+
+	return DoTraverse(MantleMontage, ApproachDirection, { ForwardHit.GetActor(), TopHit.GetActor()}, MantleMoveWarpTarget, TopHit.ImpactPoint.Z - GetActorLocation().Z);
+}
+
 bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& VaultDirection)
 {
 	UWorld* World = GetWorld();
@@ -355,7 +536,7 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 		return false;
 	}
 
-	// ï¿½Õ¸ï¿½ï¿½ ï¿½ï¿½ï¿½é¿¡ ï¿½ï¿½ï¿½ï¿½ ï¿½Ù¸ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ñ´ï¿½.
+	// ¾Õ¸é°ú À­¸é¿¡ ¼­·Î ´Ù¸¥ °æ»ç ±âÁØÀ» Àû¿ëÇÑ´Ù.
 	constexpr float MinFaceNormalZ = 0.7f;
 	constexpr float MinTopNormalZ = 0.94f;
 	const FVector ActorLocation = GetActorLocation();
@@ -386,7 +567,7 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 		return false;
 	}
 
-	// ï¿½Õ¸é¿¡ ï¿½ï¿½ç°¡ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ Top trace ï¿½ï¿½Ä¡ Ã£ï¿½ï¿½
+	// ¾Õ¸é¿¡ °æ»ç°¡ ÀÖÀ» ¶§ Top trace À§Ä¡ Ã£±â
 	const float FaceTangent = FaceNormalZ / FaceNormalSize2D;
 	const float TopTraceForwardOffset = (TopTraceStartZ - ForwardHit.ImpactPoint.Z) * FMath::Max(FaceTangent, 0.f) + VaultForwardHandOffset;
 
@@ -406,14 +587,12 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 	FHitResult TopHit;
 	const bool bTopHit = World->LineTraceSingleByObjectType(TopHit, TopTraceStart, TopTraceEnd, ObjectQueryParams, QueryParams);
 
-	DrawTraversalSweep(World, TopTraceStart, TopTraceEnd, 5.f, bTopHit ? FColor::Red : FColor::Green);
 	if (!bTopHit || TopHit.bStartPenetrating)
 	{
 		UE_LOG(LogTemp, Display, TEXT("Vault: traversal rejected, no usable top found"));
 		return false;
 	}
 
-	DrawTraversalImpact(World, TopHit.ImpactPoint, 5.f);
 	if (TopHit.ImpactNormal.Z < MinTopNormalZ)
 	{
 		UE_LOG(LogTemp, Display, TEXT("Vault: traversal rejected, top surface too steep (normal.Z=%.2f)"), TopHit.ImpactNormal.Z);
@@ -445,7 +624,7 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 
 	const float TopHeightTolerance = CapsuleRadius;
 	const FCollisionShape ClearanceTraceShape = FCollisionShape::MakeSphere(FMath::Max(0.f, CapsuleRadius));
-	// top Ç¥ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ sphere collisionï¿½ï¿½ Ç¥ï¿½é¿¡ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ offsetï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Ñ´ï¿½
+	// top Ç¥¸éÀÌ °æ»çÀÎ °æ¿ì sphere collisionÀ» Ç¥¸é¿¡¼­ ¶³¾îÆ®¸®±â À§ÇÑ offsetÀ» Á¢ÇÒ ¶§ ±âÁØÀ¸·Î °è»êÇÑ´Ù
 	const auto GetClearanceOffsetZ = [CapsuleRadius](const float SurfaceNormalZ) { return CapsuleRadius / SurfaceNormalZ + 1.f; };
 	FVector PreviousClearancePoint = TopHit.ImpactPoint + GetClearanceOffsetZ(TopHit.ImpactNormal.Z) * FVector::UpVector;
 	FHitResult DeepestOnTopHit = TopHit;
@@ -454,7 +633,7 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 	float PreviousTopDepth = 0.f;
 	EVaultDepthCheckResult DepthCheckResult = EVaultDepthCheckResult::Invalid;
 
-	// top Ç¥ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ç°¡ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´Ù´ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ñ´ï¿½(ï¿½ï¿½ï¿½Î¿ï¿½ ï¿½ï¿½Ö¹ï¿½ ï¿½ï¿½ï¿½ï¿½).
+	// top Ç¥¸éÀÇ °æ»ç°¡ ÀÏÁ¤ÇÏ´Ù´Â °ÍÀ» ÀüÁ¦·Î ÇÑ´Ù(»õ·Î¿î Àå¾Ö¹° Á¦¿Ü).
 	const auto GetExpectedTopZ = [&TopHit, &ApproachDirection](const float Depth)
 	{
 		const FVector HorizontalOffset = ApproachDirection * Depth;
@@ -506,7 +685,6 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 
 		const FVector CurrentClearancePoint = SampleHit.ImpactPoint + GetClearanceOffsetZ(SampleHit.ImpactNormal.Z) * FVector::UpVector;
 		const bool bClearanceBlocked = World->SweepTestByObjectType(PreviousClearancePoint, CurrentClearancePoint, FQuat::Identity, ObjectQueryParams, ClearanceTraceShape, QueryParams);
-		DrawVaultClearanceTrace(World, PreviousClearancePoint, CurrentClearancePoint, CapsuleRadius / 5.f);
 		if (bClearanceBlocked)
 		{
 			DepthCheckResult = EVaultDepthCheckResult::TopStopsAtObstacle;
@@ -541,7 +719,6 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 	{
 		const FVector OverEdgeClearancePoint(FirstOffTopXY.X, FirstOffTopXY.Y, FirstOffTopZ + GetClearanceOffsetZ(DeepestOnTopHit.ImpactNormal.Z));
 		const bool bOverEdgeClearanceBlocked = World->SweepTestByObjectType(PreviousClearancePoint, OverEdgeClearancePoint, FQuat::Identity, ObjectQueryParams, ClearanceTraceShape, QueryParams);
-		DrawVaultClearanceTrace(World, PreviousClearancePoint, OverEdgeClearancePoint, CapsuleRadius / 5);
 		if (bOverEdgeClearanceBlocked)
 		{
 			UE_LOG(LogTemp, Display, TEXT("Vault: over-edge clearance sweep is blocked after depth %.1f"), PreviousTopDepth);
@@ -569,7 +746,6 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 		}
 		else
 		{
-			DrawVaultLandHit(World, LandHit, 15.f);
 			VaultMoveLocation = LandHit.Location - (CapsuleHalfHeight - 1.0f) * FVector::UpVector;
 		}
 	}
@@ -579,39 +755,97 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 	}
 
 	FTransform VaultJumpTarget;
-	GetHandAlignedWarpTransform(VaultMontage, VaultJumpWarpTarget, TopHit.ImpactPoint, ApproachRotation, VaultJumpTarget);
+	GetHandAlignedWarpTransform(VaultMontage, VaultJumpWarpTarget, TopHit.ImpactPoint, ApproachRotation, ETraversalHandAlignment::LeftHand, VaultJumpTarget);
 	WarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(VaultJumpWarpTarget, VaultJumpTarget.GetLocation(), VaultJumpTarget.Rotator());
 	WarpingComponent->AddOrUpdateWarpTargetFromLocation(VaultMoveWarpTarget, VaultMoveLocation);
 
-	const float TraversalTopZ = FMath::Max(TopHit.ImpactPoint.Z, DeepestOnTopHit.ImpactPoint.Z);
-	return DoTraverse(VaultMontage, ApproachDirection, { ForwardHit.GetActor(), TopHit.GetActor(), DeepestOnTopHit.GetActor() }, VaultMoveWarpTarget, TraversalTopZ);
+	return DoTraverse(VaultMontage, ApproachDirection, { ForwardHit.GetActor(), TopHit.GetActor(), DeepestOnTopHit.GetActor() }, VaultMoveWarpTarget, VaultMoveLocation.Z - ActorLocation.Z);
 }
 
-// modified: ï¿½Å´Þ¸ï¿½ï¿½â°¡ ï¿½Ï·ï¿½Ç¸ï¿½ ï¿½Ï¹ï¿½ ï¿½Ô·ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ô·ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Ã¼ï¿½Ñ´ï¿½.
-void AMyPlayerCharacter::OnHangTraversalEnded()
+void AMyPlayerCharacter::OnHangTraversalEnded(bool bTraversalSucceeded)
 {
-	if (ClimbMappingContext == nullptr)
+	if (!bTraversalSucceeded)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Traversal: ClimbMappingContext is not set"));
+		CachedHangForwardHit = FHitResult();
+		CachedHangTopHit = FHitResult();
+		RestoreTraversalPhysics();
 		return;
 	}
 
-	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	UMyCharacterMovementComponent* MovementComponent = Cast<UMyCharacterMovementComponent>(GetCharacterMovement());
+	if (MovementComponent != nullptr)
 	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
-			ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-		{
-			Subsystem->ClearAllMappings();
-			Subsystem->AddMappingContext(ClimbMappingContext, 0);
-		}
+		MovementComponent->StartClimbing(CachedHangForwardHit, CachedHangTopHit);
+	}
+
+	if (!MovementComponent || !MovementComponent->IsClimbing())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Traversal: hang succeeded but climbing did not start, restoring physics"));
+		CachedHangForwardHit = FHitResult();
+		CachedHangTopHit = FHitResult();
+		RestoreTraversalPhysics();
 	}
 }
 
-void AMyPlayerCharacter::OnVaultTraversalEnded()
+void AMyPlayerCharacter::OnMantleTraversalEnded(bool bTraversalSucceeded)
+{
+	(void)bTraversalSucceeded;
+	RestoreTraversalPhysics();
+	CachedHangForwardHit = FHitResult();
+	CachedHangTopHit = FHitResult();
+}
+
 void AMyPlayerCharacter::OnVaultTraversalEnded(bool bTraversalSucceeded)
 {
 	(void)bTraversalSucceeded;
 	RestoreTraversalPhysics();
+}
+
+void AMyPlayerCharacter::OnTraversalWarpEnded(const FName& WarpTargetName, bool bTraversalSucceeded)
+{
+	PendingTraversalWarpIds.Remove(ActiveTraversalId);
+	RemoveStatusTag(MyGameplayTags::Status_Channeling);
+
+	if (WarpTargetName == HangJumpWarpTarget)
+	{
+		OnHangTraversalEnded(bTraversalSucceeded);
+	}
+	else if (WarpTargetName == MantleMoveWarpTarget)
+	{
+		OnMantleTraversalEnded(bTraversalSucceeded);
+	}
+	else if (WarpTargetName == VaultMoveWarpTarget)
+	{
+		OnVaultTraversalEnded(bTraversalSucceeded);
+	}
+
+	if (UMotionWarpingComponent* WarpingComponent = GetMotionWarpingComponent())
+	{
+		WarpingComponent->RemoveAllWarpTargets();
+	}
+}
+
+void AMyPlayerCharacter::OnTraversalMontageEnded(UAnimMontage* Montage, bool bInterrupted, uint64 TraversalId, FName TraversalWarpTarget)
+{
+	if (TraversalId != ActiveTraversalId)
+	{
+		PendingTraversalWarpIds.Remove(TraversalId);
+		return;
+	}
+
+	const bool bTraversalSucceeded = !PendingTraversalWarpIds.Contains(TraversalId);
+	if (!bTraversalSucceeded)
+	{
+		OnTraversalWarpEnded(TraversalWarpTarget, false);
+		return;
+	}
+
+	// ¾Ö´Ï¸ÞÀÌ¼Ç ¿¡¼Â ¶§¹®¿¡ Ãß°¡ÇÑ ·ÎÁ÷. montage°¡ Àç»ýµÇ´Â µ¿¾È
+	// pelvis ¿ªº¸Á¤À» »ó¼â½ÃÅ°±â À§ÇØ root motionÀ¸·Î capsuleÀ» ¿òÁ÷¿©¾ß ÇÑ´Ù
+	if (TraversalWarpTarget == HangJumpWarpTarget)
+	{
+		RestoreTraversalCollision();
+	}
 }
 
 bool AMyPlayerCharacter::TraceTraversalObstacles(FHitResult& OutHit, const FVector& TraceDirection)
@@ -638,7 +872,7 @@ bool AMyPlayerCharacter::TraceTraversalObstacles(FHitResult& OutHit, const FVect
 	const float MinApproachDot = FMath::Cos(FMath::DegreesToRadians(90.f - MinApproachAngleDeg));
 	const FVector Forward2D = FVector(ForwardDirection.X, ForwardDirection.Y, 0.f).GetSafeNormal();
 
-	// Æ®ï¿½ï¿½ï¿½Ì½ï¿½ï¿½ï¿½ ï¿½Ï³ï¿½ï¿½ï¿½ï¿½Ì¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ì¿ï¿½ ï¿½ï¿½ï¿½Î´ï¿½.
+	// Æ®·¹ÀÌ½º°¡ ÇÏ³ª»ÓÀÌ¸é º¸°£ÇÒ °Ô ¾øÀ¸¹Ç·Î ÃÖÀú ³ôÀÌ¿¡ ³õÀÎ´Ù.
 	const float ZStep = (ForwardTraceCount > 1)
 		? (TraversalTraceHighestZ - TraversalTraceLowestZ) / static_cast<float>(ForwardTraceCount - 1)
 		: 0.f;
@@ -660,13 +894,13 @@ bool AMyPlayerCharacter::TraceTraversalObstacles(FHitResult& OutHit, const FVect
 
 		if (bHit)
 		{
-			// ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ì¸ï¿½(ï¿½Ù´ï¿½/Ãµï¿½ï¿½) 0ï¿½ï¿½ï¿½Í°ï¿½ ï¿½Ç¾ï¿½ dotï¿½ï¿½ 0ï¿½ï¿½ ï¿½Ç¹Ç·ï¿½ ï¿½×´ï¿½ï¿½ ï¿½É·ï¿½ï¿½ï¿½ï¿½ï¿½.
+			// ³ë¸ÖÀÌ ¼ø¼ö ¼öÁ÷ÀÌ¸é(¹Ù´Ú/ÃµÀå) 0º¤ÅÍ°¡ µÇ¾î dotµµ 0ÀÌ µÇ¹Ç·Î ±×´ë·Î °É·¯Áø´Ù.
 			const FVector Normal2D = FVector(Hit.ImpactNormal.X, Hit.ImpactNormal.Y, 0.f).GetSafeNormal();
 			const float ApproachDot = FVector::DotProduct(Forward2D, -Normal2D);
 
 			if (ApproachDot < MinApproachDot)
 			{
-				// ï¿½ï¿½ ï¿½ï¿½ï¿½Ì¸ï¿½ ï¿½ï¿½Ä£ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Æ®ï¿½ï¿½ï¿½Ì½ï¿½ï¿½ï¿½ ï¿½Ñ¾î°£ï¿½ï¿½.
+				// ÀÌ ³ôÀÌ¸¸ ½ºÄ£ °ÍÀÏ ¼ö ÀÖÀ¸¹Ç·Î ´ÙÀ½ ³ôÀÌÀÇ Æ®·¹ÀÌ½º·Î ³Ñ¾î°£´Ù.
 				UE_LOG(LogTemp, Display, TEXT("Traversal: trace [%d] rejected, grazing approach (dot=%.2f < %.2f)"),
 					TraceIndex, ApproachDot, MinApproachDot);
 				continue;
@@ -704,7 +938,7 @@ bool AMyPlayerCharacter::IsCapsuleBlockedAtLocation(const FVector& CapsuleBaseLo
 	return bBlocked;
 }
 
-bool AMyPlayerCharacter::DoTraverse(UAnimMontage* Montage, const FVector& FacingDirection, const TArray<AActor*>& ObstacleActors, FName TraversalWarpTarget, float TraversalTopZ)
+bool AMyPlayerCharacter::DoTraverse(UAnimMontage* Montage, const FVector& FacingDirection, const TArray<AActor*>& ObstacleActors, FName TraversalWarpTarget, float TraversalTopHeightOffset)
 {
 	if (Montage == nullptr)
 	{
@@ -717,12 +951,21 @@ bool AMyPlayerCharacter::DoTraverse(UAnimMontage* Montage, const FVector& Facing
 		return false;
 	}
 
+	if (AnimInstance->Montage_Play(Montage) <= 0.f)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Traversal: Montage_Play failed for %s"), *GetNameSafe(Montage));
+		if (UMotionWarpingComponent* WarpingComponent = GetMotionWarpingComponent())
+		{
+			WarpingComponent->RemoveAllWarpTargets();
+		}
+
+		return false;
+	}
+
 	if (!FacingDirection.IsNearlyZero())
 	{
 		SetActorRotation(FacingDirection.Rotation());
 	}
-
-	AnimInstance->Montage_Play(Montage);
 
 	const uint64 TraversalId = ++ActiveTraversalId;
 	PendingTraversalWarpIds.Add(TraversalId);
@@ -730,10 +973,10 @@ bool AMyPlayerCharacter::DoTraverse(UAnimMontage* Montage, const FVector& Facing
 	AnimInstance->Montage_SetEndDelegate(EndDelegate, Montage);
 
 	AddStatusTag(MyGameplayTags::Status_Channeling);
-	SetupTraversalCamera(TraversalTopZ);
+	SetupTraversalCamera(TraversalTopHeightOffset);
 
-	// MOVE_Walkingï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Æ® ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½. 
-	// PhysWalkingï¿½ï¿½ ï¿½Óµï¿½ï¿½ï¿½ MoveAlongFloorï¿½ï¿½ ï¿½Ñ±ï¿½é¼­ ï¿½ß·ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ñ´ï¿½
+	// MOVE_WalkingÀº ¼öÁ÷ ·çÆ® ¸ð¼ÇÀ» ¹ö¸°´Ù. 
+	// PhysWalkingÀÌ ¼Óµµ¸¦ MoveAlongFloor·Î ³Ñ±â¸é¼­ Áß·Â ¼ººÐÀ» Åõ¿µÇØ Á¦°ÅÇÑ´Ù
 	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
 
 	TraversalIgnoredActors.Reset();
@@ -741,7 +984,7 @@ bool AMyPlayerCharacter::DoTraverse(UAnimMontage* Montage, const FVector& Facing
 	{
 		for (AActor* Obstacle : ObstacleActors)
 		{
-			// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ýµï¿½ï¿½ ï¿½×·ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ê´ï¿½.
+			// Àü¹æ ¸é°ú À­¸éÀº º¸Åë °°Àº ¾×ÅÍÁö¸¸ ¹Ýµå½Ã ±×·¸Áö´Â ¾Ê´Ù.
 			if (Obstacle != nullptr && !TraversalIgnoredActors.Contains(Obstacle))
 			{
 				Capsule->IgnoreActorWhenMoving(Obstacle, true);
@@ -754,9 +997,9 @@ bool AMyPlayerCharacter::DoTraverse(UAnimMontage* Montage, const FVector& Facing
 }
 
 bool AMyPlayerCharacter::GetHandAlignedWarpTransform(UAnimMontage* Montage, const FName& WarpTargetName,
-	const FVector& ContactPoint, const FRotator& ApproachRotation, FTransform& OutTarget) const
+	const FVector& ContactPoint, const FRotator& ApproachRotation, ETraversalHandAlignment HandAlignment, FTransform& OutTarget) const
 {
-	// ï¿½ï¿½ï¿½ï¿½ï¿½Øµï¿½ È£ï¿½ï¿½Î°ï¿½ ï¿½ï¿½ ï¿½ï¿½ ï¿½Öµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ö¾ï¿½ ï¿½Ð´ï¿½.
+	// ½ÇÆÐÇØµµ È£ÃâºÎ°¡ ¾µ ¼ö ÀÖµµ·Ï Á¢ÃËÁ¡À» ¸ÕÀú ³Ö¾î µÐ´Ù.
 	OutTarget = FTransform(ApproachRotation, ContactPoint);
 
 	if (Montage == nullptr || GetMesh() == nullptr)
@@ -770,34 +1013,58 @@ bool AMyPlayerCharacter::GetHandAlignedWarpTransform(UAnimMontage* Montage, cons
 		return false;
 	}
 
-	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Æ¼ï¿½ï¿½ï¿½Ì¿ï¿½ï¿½ï¿½ ï¿½Ð´Â´ï¿½. ï¿½Ã°ï¿½ï¿½ï¿½ ï¿½Ïµï¿½ï¿½Úµï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½
-	// ï¿½ï¿½ï¿½ï¿½ï¿½Í¿ï¿½ï¿½ï¿½ Ã¢ï¿½ï¿½ ï¿½Å±ï¿½ï¿½ ï¿½ï¿½ï¿½Äµï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Î´ï¿½.
+	// Á¢ÃË ½ÃÁ¡À» notify state¿¡¼­ ÀÐ´Â´Ù.
 	TArray<FMotionWarpingWindowData> Windows;
 	UMotionWarpingUtilities::GetMotionWarpingWindowsForWarpTargetFromAnimation(Montage, WarpTargetName, Windows);
 	if (Windows.Num() == 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Traversal: %s has no %s window, using the contact point as is"),
-			*GetNameSafe(Montage), *WarpTargetName.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("Traversal: %s has no %s window, using the contact point as is"), *GetNameSafe(Montage), *WarpTargetName.ToString());
 		return false;
 	}
 
-	const int32 HandBoneIndex = GetMesh()->GetBoneIndex(TraversalHandBoneName);
-	if (HandBoneIndex == INDEX_NONE)
+	TArray<FName> HandBoneNames;
+	if (HandAlignment != ETraversalHandAlignment::RightHand)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Traversal: bone %s not found, using the contact point as is"), *TraversalHandBoneName.ToString());
+		HandBoneNames.Add(LeftHandBoneName);
+	}
+	if (HandAlignment != ETraversalHandAlignment::LeftHand)
+	{
+		HandBoneNames.Add(RightHandBoneName);
+	}
+
+	// ÇÑÂÊ ¼Õ º»ÀÌ ¾ø¾îµµ ³²Àº ¼ÕÀ¸·Î ÁøÇàÇÑ´Ù.
+	TArray<int32> HandBoneIndices;
+	for (const FName& HandBoneName : HandBoneNames)
+	{
+		const int32 BoneIndex = GetMesh()->GetBoneIndex(HandBoneName);
+		if (BoneIndex == INDEX_NONE)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Traversal: bone %s not found"), *HandBoneName.ToString());
+			continue;
+		}
+
+		HandBoneIndices.Add(BoneIndex);
+	}
+
+	if (HandBoneIndices.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Traversal: no usable hand bone, using the contact point as is"));
 		return false;
 	}
 
-	// AMyWeapon::BuildBoneContainerï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ì³Ê¸ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½.
-	// RefSkeleton ï¿½ï¿½ï¿½ï¿½ï¿½Ì¶ï¿½ LODï¿½ï¿½ required bonesï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½.
+	// AMyWeapon::BuildBoneContainer¿Í °°Àº ¹æ½ÄÀ¸·Î ÄÁÅ×ÀÌ³Ê¸¦ Á÷Á¢ ¸¸µç´Ù.
+	// RefSkeleton ±âÁØÀÌ¶ó LODÀÇ required bones¿Í ¹«°üÇÏ´Ù.
 	const FReferenceSkeleton& RefSkel = SkelMesh->GetRefSkeleton();
 	TArray<FBoneIndexType> RequiredBones;
 
-	int32 Current = HandBoneIndex;
-	while (Current != INDEX_NONE)
+	for (const int32 HandBoneIndex : HandBoneIndices)
 	{
-		RequiredBones.AddUnique(static_cast<FBoneIndexType>(Current));
-		Current = RefSkel.GetParentIndex(Current);
+		int32 Current = HandBoneIndex;
+		while (Current != INDEX_NONE)
+		{
+			RequiredBones.AddUnique(static_cast<FBoneIndexType>(Current));
+			Current = RefSkel.GetParentIndex(Current);
+		}
 	}
 	RequiredBones.Sort();
 
@@ -807,11 +1074,10 @@ bool AMyPlayerCharacter::GetHandAlignedWarpTransform(UAnimMontage* Montage, cons
 	FCSPose<FCompactPose> CSPose;
 	UMotionWarpingUtilities::ExtractComponentSpacePose(Montage, BoneContainer, Windows[0].EndTime, false, CSPose);
 
-	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Bone ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ FCompactPoseBoneIndex(1)ï¿½ï¿½ ï¿½Ïµï¿½ï¿½Úµï¿½ï¿½Ø¼ï¿½
-	// ï¿½ï¿½Æ® ï¿½ï¿½ï¿½ï¿½ ï¿½Ú½ï¿½ï¿½ï¿½ ï¿½Æ´ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½. ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Æ® ï¿½Îµï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½È¯ï¿½Ñ´ï¿½.
+	// ¿£ÁøÀÇ Bone ¿öÇÁ Æ÷ÀÎÆ®´Â FCompactPoseBoneIndex(1)À» ÇÏµåÄÚµùÇØ¼­
+	// ·çÆ® Á÷°è ÀÚ½ÄÀÌ ¾Æ´Ñ º»¿¡´Â ¾µ ¼ö ¾ø´Ù. ½ÇÁ¦ ÄÄÆÑÆ® ÀÎµ¦½º·Î º¯È¯ÇÑ´Ù.
 	const FCompactPoseBoneIndex RootCompact = BoneContainer.MakeCompactPoseIndex(FMeshPoseBoneIndex(0));
-	const FCompactPoseBoneIndex HandCompact = BoneContainer.MakeCompactPoseIndex(FMeshPoseBoneIndex(HandBoneIndex));
-	if (RootCompact.GetInt() == INDEX_NONE || HandCompact.GetInt() == INDEX_NONE)
+	if (RootCompact.GetInt() == INDEX_NONE)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Traversal: compact pose index lookup failed, using the contact point as is"));
 		return false;
@@ -819,82 +1085,97 @@ bool AMyPlayerCharacter::GetHandAlignedWarpTransform(UAnimMontage* Montage, cons
 
 	const FTransform MeshToActor = FTransform(GetBaseRotationOffset());
 	const FTransform RootBoneToActor = CSPose.GetComponentSpaceTransform(RootCompact) * MeshToActor;
-	const FTransform HandBoneToActor = CSPose.GetComponentSpaceTransform(HandCompact) * MeshToActor;
-	const FVector HandInRootSpace = RootBoneToActor.InverseTransformPosition(HandBoneToActor.GetLocation());
-	const FVector HandOffsetInWorldSpace = ApproachRotation.RotateVector(RootBoneToActor.TransformVector(HandInRootSpace));
+
+	FVector HandLocationSum = FVector::ZeroVector;
+	int32 HandSampleCount = 0;
+	for (const int32 HandBoneIndex : HandBoneIndices)
+	{
+		const FCompactPoseBoneIndex HandCompact = BoneContainer.MakeCompactPoseIndex(FMeshPoseBoneIndex(HandBoneIndex));
+		if (HandCompact.GetInt() == INDEX_NONE)
+		{
+			continue;
+		}
+
+		HandLocationSum += (CSPose.GetComponentSpaceTransform(HandCompact) * MeshToActor).GetLocation();
+		++HandSampleCount;
+	}
+
+	if (HandSampleCount == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Traversal: compact pose index lookup failed, using the contact point as is"));
+		return false;
+	}
+
+	const FVector HandLocationInActorSpace = HandLocationSum / static_cast<float>(HandSampleCount);
+	const FVector HandOffsetInActorSpace = HandLocationInActorSpace - RootBoneToActor.GetLocation();
+	const FVector HandOffsetInWorldSpace = ApproachRotation.RotateVector(HandOffsetInActorSpace);
+	//const FTransform HandBoneToActor = CSPose.GetComponentSpaceTransform(HandCompact) * MeshToActor;
+	//const FVector HandInRootSpace = RootBoneToActor.InverseTransformPosition(HandBoneToActor.GetLocation());
+	//const FVector HandOffsetInWorldSpace = ApproachRotation.RotateVector(RootBoneToActor.TransformVector(HandInRootSpace));
+
 	OutTarget = FTransform(ApproachRotation, ContactPoint - HandOffsetInWorldSpace);
 
 	return true;
 }
 
-void AMyPlayerCharacter::OnTraversalWarpEnded(const FName& WarpTargetName)
+void AMyPlayerCharacter::SetupTraversalCamera(float TraversalTopHeightOffset)
 {
-	PendingTraversalWarpIds.Remove(ActiveTraversalId);
-	RemoveStatusTag(MyGameplayTags::Status_Channeling);
-
-
-	if (WarpTargetName == VaultMoveWarpTarget)
-	{
-		OnVaultTraversalEnded();
-	}
-
-	if (UMotionWarpingComponent* WarpingComponent = GetMotionWarpingComponent())
-	{
-		WarpingComponent->RemoveAllWarpTargets();
-	}
-}
-
-void AMyPlayerCharacter::SetupTraversalCamera(float TraversalTopZ)
-{
-	if (CameraBoom == nullptr)
+	if (CameraBoom == nullptr || FollowCamera == nullptr)
 	{
 		return;
 	}
 
-	CachedCameraBoomTargetOffset = CameraBoom->TargetOffset;
-
 	constexpr float CameraClearanceMargin = 10.f;
-	const float CurrentArmOriginZ = CameraBoom->GetComponentLocation().Z + CachedCameraBoomTargetOffset.Z;
-	const float SafeArmOriginZ = TraversalTopZ + CameraBoom->ProbeSize + CameraClearanceMargin;
-	const float RequiredHeightOffset = FMath::Max(0.f, SafeArmOriginZ - CurrentArmOriginZ);
-	CameraBoom->TargetOffset = CachedCameraBoomTargetOffset + RequiredHeightOffset * FVector::UpVector;
+	const FVector DefaultArmOrigin = CameraBoom->GetComponentLocation() + DefaultCameraBoomTargetOffset;
+	const FVector ArmOriginToCameraDirection =
+		(FollowCamera->GetComponentLocation() - DefaultArmOrigin).GetSafeNormal();
+
+	const float SafeArmOriginHeightOffset = TraversalTopHeightOffset + CameraBoom->ProbeSize + CameraClearanceMargin;
+	const float ArmOriginHeightOffset = static_cast<float>(DefaultArmOrigin.Z - GetActorLocation().Z);
+	const float RequiredPullBackDistance = FMath::Max(0.f, SafeArmOriginHeightOffset - ArmOriginHeightOffset);
+
+	CameraBoom->TargetOffset = DefaultCameraBoomTargetOffset
+		+ RequiredPullBackDistance * ArmOriginToCameraDirection;
+	bTraversalCameraActive = true;
 }
 
 void AMyPlayerCharacter::RestoreTraversalCamera()
 {
 	if (CameraBoom != nullptr)
 	{
-		CameraBoom->TargetOffset = CachedCameraBoomTargetOffset;
+		CameraBoom->TargetOffset = DefaultCameraBoomTargetOffset;
 	}
+
+	bTraversalCameraActive = false;
 }
 
-void AMyPlayerCharacter::RestoreTraversalPhysics()
+void AMyPlayerCharacter::RestoreTraversalCollision()
 {
-	for (const TWeakObjectPtr<AActor>& IgnoredActor : TraversalIgnoredActors)
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
 	{
-		if (AActor* Obstacle = IgnoredActor.Get())
+		for (const TWeakObjectPtr<AActor>& IgnoredActor : TraversalIgnoredActors)
 		{
-			GetCapsuleComponent()->IgnoreActorWhenMoving(Obstacle, false);
+			if (AActor* Obstacle = IgnoredActor.Get())
+			{
+				Capsule->IgnoreActorWhenMoving(Obstacle, false);
+			}
 		}
 	}
 
 	TraversalIgnoredActors.Reset();
+}
 
-	// ï¿½Ù¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Ç¾ï¿½ï¿½ï¿½ï¿½ï¿½ È®ï¿½ï¿½
+void AMyPlayerCharacter::RestoreTraversalPhysics()
+{
+	RestoreTraversalCollision();
+
+	// TODO: ´Ù¸¥ ·ÎÁ÷¿¡ ÀÇÇØ º¯°æµÇ¾ú´ÂÁö È®ÀÎÇÏ´Â ·ÎÁ÷ º¸¿Ï
 	if (GetCharacterMovement()->MovementMode == MOVE_Flying) 
 	{
 		GetCharacterMovement()->SetDefaultMovementMode();
 	}
 
 	RestoreTraversalCamera();
-}
-
-void AMyPlayerCharacter::OnTraversalMontageEnded(UAnimMontage* Montage, bool bInterrupted, uint64 TraversalId, FName TraversalWarpTarget)
-{
-	if (PendingTraversalWarpIds.Contains(TraversalId))
-	{
-		OnTraversalWarpEnded(TraversalWarpTarget);
-	}
 }
 
 FVector AMyPlayerCharacter::GetWorldMovementDirection(const FVector2D& MovementVector) const

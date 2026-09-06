@@ -345,6 +345,12 @@ void UMyAnimInstance::UpdateLocomotionValues()
 
 void UMyAnimInstance::UpdateCharacterRotation()
 {
+	if (CustomMovementMode == EMyCustomMovementMode::Climbing)
+	{
+		PrimaryTargetRotation = SecondaryTargetRotation = WorldRotation;
+		return;
+	}
+
 	if (!UCachedAnimDataLibrary::StateMachine_IsStateRelevant(this, LocomotionStateData) || bHasRootMotion)
 	{
 		PrimaryTargetRotation = SecondaryTargetRotation = WorldRotation;
