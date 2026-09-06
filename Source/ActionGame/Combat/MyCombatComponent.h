@@ -8,6 +8,7 @@
 enum class EWeaponSkillType : uint8;
 class AMyWeapon;
 class UMySkillData;
+class UMySkillInstance;
 class UInputAction;
 class UEnhancedPlayerInput;
 struct FInputActionInstance;
@@ -23,13 +24,12 @@ public:
 
 	void InitAttributes(UCurveTable* CurveTable, float Level);
 
-	FORCEINLINE UEnhancedPlayerInput* GetPlayerController() const;
-
 	FORCEINLINE const TSoftClassPtr<AMyWeapon>& GetDefaultWeaponClass() const { return DefaultWeaponClass; }
 	FORCEINLINE AMyWeapon* GetCurrentWeapon() const { return CurrentWeapon; }
 
 	void EquipWeapon(AMyWeapon* Weapon);
 	void EquipDefaultWeapon();
+	void UnequipCurrentWeapon();
 
 	FORCEINLINE float GetCurrentMana() const { return CurrentMana; }
 
@@ -41,6 +41,15 @@ public:
 	void OnWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector);
 	void OnWeaponSkillReleased(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector);
 
+	UMySkillInstance* FindSkillInstance(UMySkillData* SkillData) const;
+
+protected:
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	void GrantSkillsFromWeapon(AMyWeapon* Weapon);
+	void RevokeSkillsFromWeapon(AMyWeapon* Weapon);
+	void RevokeAllSkills();
+
 private:
 
 	UPROPERTY(EditAnywhere)
@@ -51,8 +60,11 @@ private:
 
 protected:
 
-	UPROPERTY()
+	UPROPERTY(Transient)
 	TObjectPtr<AMyWeapon> CurrentWeapon;
+
+	UPROPERTY(Transient)
+	TMap<TObjectPtr<UMySkillData>, TObjectPtr<UMySkillInstance>> SkillInstances;
 
 	bool bSkillEnabled;
 

@@ -4,6 +4,7 @@
 
 #include "Engine/DataAsset.h"
 #include "GameplayTagContainer.h"
+#include "Templates/SubclassOf.h"
 #include "MySkillData.generated.h"
 
 UENUM(BlueprintType)
@@ -15,6 +16,7 @@ enum class ESkillInstancingPolicy : uint8
 };
 
 class UMyCombatComponent;
+class UMySkillInstance;
 class UInputAction;
 struct FInputActionInstance;
 class UEnhancedPlayerInput;
@@ -38,7 +40,7 @@ struct FComboLinkOption
 };
 
 /**
- * 
+ *
  */
 UCLASS(BlueprintType)
 class ACTIONGAME_API UMySkillData : public UDataAsset
@@ -52,7 +54,7 @@ public:
 
 	UPROPERTY(EditDefaultsOnly)
 	FText DisplayName;
-	
+
 	UPROPERTY(EditDefaultsOnly)
 	TObjectPtr<UTexture2D> Icon = nullptr;
 
@@ -69,7 +71,7 @@ public:
 
 	UPROPERTY(EditDefaultsOnly)
 	ESkillInstancingPolicy InstancingPolicy = ESkillInstancingPolicy::PerAvatar;
-	
+
 	UPROPERTY(EditDefaultsOnly)
 	FGameplayTagContainer RequiredTags;
 	UPROPERTY(EditDefaultsOnly)
@@ -81,42 +83,15 @@ public:
 	UPROPERTY(EditDefaultsOnly)
 	TArray<FComboLinkOption> LinkOptions;
 
+	UPROPERTY(EditDefaultsOnly)
+	TSubclassOf<UMySkillInstance> InstanceClassOverride;
+
 public:
 
-	virtual void InitWithAvatar(AActor* NewAvatarActor);
-	virtual void InitWithItem(AActor* OwningItem) {}
-	virtual void HandleSkillReleased(const FInputActionInstance& Instance, const FVector2D& MovementVector);
-
-	void TryExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector);
-	void CancelSkill();
-	
-	FORCEINLINE bool IsSkillActive() const { return ActiveCount > 0; }
-
-	// TODO: for combo skill
-	FORCEINLINE	void EnableExecution(float Duration);
+	TSubclassOf<UMySkillInstance> GetInstanceClass() const;
+	virtual bool IsInstanceClassCompatible(TSubclassOf<UMySkillInstance> InstanceClass) const;
 
 protected:
 
-	virtual bool CanExecuteSkill();
-	virtual void CommitCostsAndCooldown();
-	virtual void ExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector) {}
-	virtual void OnSkillEnd(bool bCanceled);
-
-	void PlaySkillMontage();
-	virtual void OnSkillMontageEnded(UAnimMontage* Montage, bool bInterrupted) {}
-	virtual void OnSkillMontageBlendingOutStarted(UAnimMontage* Montage, bool bInterrupted) {}
-
-	UMyCombatComponent* GetCombatComponentFromAvatarActor() const;
-	UAnimInstance* GetAnimInstanceFromAvatarActor() const;
-
-protected:
-
-	UPROPERTY()
-	TWeakObjectPtr<AActor> AvatarActor;
-
-	int32 CurrentMontageIndex = 0;
-
-	uint32 ExecutionGrantCount = 1;
-
-	uint32 ActiveCount = 0;
+	virtual TSubclassOf<UMySkillInstance> GetDefaultInstanceClass() const;
 };

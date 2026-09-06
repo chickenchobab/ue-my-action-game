@@ -6,9 +6,7 @@
 #include "MyWeapon.generated.h"
 
 class UMySkillData;
-class USkillData_Attack;
-
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAttackHit, AActor*, TArray<AActor*>&);
+class USkillInstance_Attack;
 
 UENUM(BlueprintType)
 enum class EWeaponSkillType : uint8
@@ -46,11 +44,12 @@ public:
 	virtual void Equip(USceneComponent* NewParent, const FName& OverrideSocket = NAME_None);
 	virtual void UnEquip();
 
-	void InitWeaponForAttack(USkillData_Attack* Skill, const UAnimMontage* SkillMontage);
+	void InitWeaponForAttack(USkillInstance_Attack* Skill, const UAnimMontage* SkillMontage);
 	void OnAttackBegin();
 	void OnAttackEnd();
 
 	FORCEINLINE UMySkillData* GetSkillData(EWeaponSkillType SkillType) const { return SkillSet.FindRef(SkillType); }
+	FORCEINLINE const TMap<EWeaponSkillType, TObjectPtr<UMySkillData>>& GetSkillSet() const { return SkillSet; }
 
 protected:
 	virtual void PostInitializeComponents() override;
@@ -67,8 +66,8 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly)
 	TMap<EWeaponSkillType, TObjectPtr<UMySkillData>> SkillSet;
-
-	USkillData_Attack* CurrentActiveSkill;
+	
+	TWeakObjectPtr<USkillInstance_Attack> CurrentActiveSkill;
 
 	UPROPERTY(EditDefaultsOnly)
 	TSubclassOf<UAnimInstance> AnimLayerClass;
@@ -79,10 +78,6 @@ private:
 	TObjectPtr<class USphereComponent> PickupCollision;
 
 	bool bIsEquipped : 1;
-
-public:
-
-	FOnAttackHit OnAttackHit;
 
 private:
 

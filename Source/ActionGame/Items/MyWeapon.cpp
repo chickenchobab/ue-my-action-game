@@ -5,11 +5,11 @@
 #include "Components/SphereComponent.h"
 #include "GameFramework/Character.h"
 #include "Engine/OverlapResult.h"
-#include "Skills/SkillData_Attack.h"
+#include "Skills/SkillInstance_Attack.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/SkeletalMeshSocket.h"
 #include "DrawDebugHelpers.h"
-#include "Misc/MemStack.h" // modified
+#include "Misc/MemStack.h"
 
 static bool bShouldDrawSocketSphere = false;
 static inline void DrawSocketSphere(UWorld* World, FVector Location, float Radius, FColor Color)
@@ -61,14 +61,7 @@ void AMyWeapon::Equip(USceneComponent* NewParent, const FName& OverrideAttachedS
 	}
 
 	SetOwner(NewParent->GetOwner());
-	for (auto &KVP : SkillSet)
-	{
-		if (UMySkillData* SkillData = KVP.Value)
-		{
-			SkillData->InitWithAvatar(GetOwner());
-		}
-	}
-	
+
 	PickupCollision->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	bIsEquipped = true;
 }
@@ -80,34 +73,44 @@ void AMyWeapon::UnEquip()
 		MeshParent->OnTickPose.Remove(HitCheckDelegateHandle);
 		MeshParent->UnlinkAnimClassLayers(AnimLayerClass);
 	}
+	
+	HitCheckDelegateHandle.Reset();
 
 	PrimaryActorTick.SetTickFunctionEnable(false);
 
 	const FDetachmentTransformRules DetachRules(EDetachmentRule::KeepWorld, true);
 	DetachFromActor(DetachRules);
 
-	for (auto& KVP : SkillSet)
-	{
-		if (UMySkillData* SkillData = KVP.Value)
-		{
-			SkillData->InitWithAvatar(nullptr);
-		}
-	}
+	bIsAttacking = false;
+	CurrentActiveSkill.Reset();
+	HitCheckContext.Reset();
 
 	PickupCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 
 	bIsEquipped = false;
+	SetOwner(nullptr);
 }
 
-void AMyWeapon::InitWeaponForAttack(USkillData_Attack* Skill, const UAnimMontage* SkillMontage)
+void AMyWeapon::InitWeaponForAttack(USkillInstance_Attack* Skill, const UAnimMontage* SkillMontage)
 {
+	if (!IsValid(Skill) || !IsValid(SkillMontage))
+	{
+		CurrentActiveSkill.Reset();
+		HitCheckContext.Reset();
+		return;
+	}
+
 	CurrentActiveSkill = Skill;
-	// Anim Notify state does not provide exact skill montage, so set here
 	InitHitCheckContext(SkillMontage);
 }
 
 void AMyWeapon::OnAttackBegin()
 {
+	if (!bIsEquipped || !HitCheckContext.IsValid())
+	{
+		return;
+	}
+
 	bIsAttacking = true;
 	HitCheckContext.OwnerMeshTransformLastFrame = HitCheckContext.OwnerMesh->GetComponentTransform();
 }
@@ -115,7 +118,13 @@ void AMyWeapon::OnAttackBegin()
 void AMyWeapon::OnAttackEnd()
 {
 	bIsAttacking = false;
-	CurrentActiveSkill->OnAttackEnd();
+
+	// 인스턴스가 회수됐을 수 있으므로 유효성을 확인한다
+	if (USkillInstance_Attack* ActiveSkill = CurrentActiveSkill.Get())
+	{
+		ActiveSkill->OnAttackEnd();
+	}
+	CurrentActiveSkill.Reset();
 }
 
 void AMyWeapon::PostInitializeComponents()
@@ -123,14 +132,6 @@ void AMyWeapon::PostInitializeComponents()
 	Super::PostInitializeComponents();
 
 	WeaponSockets = WeaponMesh->GetAllSocketNames();
-
-	for (const TPair<EWeaponSkillType, TObjectPtr<UMySkillData>>& Pair : SkillSet)
-	{
-		if (UMySkillData* SkillData = Pair.Value.Get())
-		{
-			SkillData->InitWithItem(this);
-		}
-	}
 }
 
 void AMyWeapon::BeginPlay()
@@ -224,7 +225,14 @@ void AMyWeapon::HitCheck(USkinnedMeshComponent* MeshComp, float DeltaTime, bool 
 				HitCheckContext.SkillHandledActors.Add(HitActor);
 			}
 		}
-		OnAttackHit.Broadcast(GetOwner(), NewlyHitActors);
+
+		if (!NewlyHitActors.IsEmpty())
+		{
+			if (USkillInstance_Attack* ActiveSkill = CurrentActiveSkill.Get())
+			{
+				ActiveSkill->OnAttackHit(GetOwner(), NewlyHitActors);
+			}
+		}
 		HitCheckContext.HitActorsThisFrame.Empty();
 	}
 

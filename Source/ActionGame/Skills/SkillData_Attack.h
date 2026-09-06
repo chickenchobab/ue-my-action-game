@@ -5,34 +5,22 @@
 #include "Skills/MySkillData.h"
 #include "SkillData_Attack.generated.h"
 
-struct FInputActionInstance;
-
 /**
- * 
+ *
  */
 UCLASS()
 class ACTIONGAME_API USkillData_Attack : public UMySkillData
 {
 	GENERATED_BODY()
-	
+
 public:
-	virtual void InitWithItem(AActor* OwningItem) override;
-	virtual void InitWithAvatar(AActor* NewAvatar) override;
-	virtual bool CanExecuteSkill() override;
-	virtual void ExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector) override;
-	virtual void OnSkillEnd(bool bCanceled) override;
-
-	virtual void OnSkillMontageEnded(UAnimMontage* Montage, bool bInterrupted) override;
-	virtual void OnSkillMontageBlendingOutStarted(UAnimMontage* Montage, bool bInterrupted) override;
-
-	virtual void OnAttackEnd();
-	virtual void OnAttackHit(AActor* Instigator, TArray<AActor*>& TargetActors);
-
-protected:
 
 	UPROPERTY(EditDefaultsOnly)
 	float AttackComboWindow = 2.0f;
 
-	FTimerHandle ComboWindowTimerHandle;
-	bool bInAttackComboWindow = false;
+	virtual bool IsInstanceClassCompatible(TSubclassOf<UMySkillInstance> InstanceClass) const override;
+
+protected:
+
+	virtual TSubclassOf<UMySkillInstance> GetDefaultInstanceClass() const override;
 };
