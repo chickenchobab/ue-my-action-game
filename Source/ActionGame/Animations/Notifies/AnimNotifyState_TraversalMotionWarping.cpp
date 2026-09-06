@@ -44,6 +44,6 @@ void UAnimNotifyState_TraversalMotionWarping::OnTraversalRootMotionModifierDeact
 
 	if (AMyPlayerCharacter* PlayerCharacter = Cast<AMyPlayerCharacter>(MotionWarpingComp->GetOwner()))
 	{
-		PlayerCharacter->OnTraversalWarpEnded(WarpModifier->WarpTargetName);
+		PlayerCharacter->OnTraversalWarpEnded(WarpModifier->WarpTargetName, true);
 	}
 }

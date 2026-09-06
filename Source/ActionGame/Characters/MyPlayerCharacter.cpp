@@ -16,6 +16,7 @@
 #include "Items/MyWeapon.h"
 #include "Attributes/MyStatsComponent.h"
 #include "Attributes/MyGameplayTags.h"
+#include "Player/MyPlayerController.h"
 #include "Animation/AnimInstance.h"
 #include "MotionWarpingComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -103,6 +104,32 @@ AMyPlayerCharacter::AMyPlayerCharacter(const FObjectInitializer& ObjectInitializ
 	FollowCamera->bUsePawnControlRotation = false;
 
 	CachedWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
+}
+
+void AMyPlayerCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+{
+
+	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
+
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
+			ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+		{
+			if (OnGroundMappingContext != nullptr)
+			{
+				Subsystem->RemoveMappingContext(OnGroundMappingContext);
+			}
+
+			const UCharacterMovementComponent* MovementComponent = GetCharacterMovement();
+			if (MovementComponent->MovementMode == MOVE_Walking || MovementComponent->MovementMode == MOVE_NavWalking)
+			{
+				if (OnGroundMappingContext != nullptr)
+				{
+					Subsystem->AddMappingContext(OnGroundMappingContext, 0);
+				}
+			}
+	RestoreTraversalCamera();
 }
 
 void AMyPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -361,7 +388,7 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 
 	// �ո鿡 ��簡 ���� �� Top trace ��ġ ã��
 	const float FaceTangent = FaceNormalZ / FaceNormalSize2D;
-	const float TopTraceForwardOffset = (TopTraceStartZ - ForwardHit.ImpactPoint.Z) * FMath::Max(FaceTangent, 0.f) + ForwardHandOffset;
+	const float TopTraceForwardOffset = (TopTraceStartZ - ForwardHit.ImpactPoint.Z) * FMath::Max(FaceTangent, 0.f) + VaultForwardHandOffset;
 
 	FVector ApproachDirection = VaultDirection;
 	ApproachDirection.Z = 0.f;
@@ -441,7 +468,6 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 		const FVector SampleStart(OutSampleXY.X, OutSampleXY.Y, OutExpectedTopZ + CapsuleRadius);
 		const FVector SampleEnd(OutSampleXY.X, OutSampleXY.Y, OutExpectedTopZ - TopHeightTolerance);
 		const bool bHit = World->LineTraceSingleByObjectType(OutHit, SampleStart, SampleEnd, ObjectQueryParams, QueryParams);
-		//DrawVaultDepthTrace(World, SampleStart, SampleEnd, OutHit, bHit, 10.f);
 		return bHit;
 	};
 
@@ -557,8 +583,6 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 	WarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(VaultJumpWarpTarget, VaultJumpTarget.GetLocation(), VaultJumpTarget.Rotator());
 	WarpingComponent->AddOrUpdateWarpTargetFromLocation(VaultMoveWarpTarget, VaultMoveLocation);
 
-	// return DoTraverse(VaultMontage, ApproachDirection, { ForwardHit.GetActor(), TopHit.GetActor(), DeepestOnTopHit.GetActor() }, VaultMoveWarpTarget);
-	// modified: use the highest accepted top sample for the traversal camera clearance.
 	const float TraversalTopZ = FMath::Max(TopHit.ImpactPoint.Z, DeepestOnTopHit.ImpactPoint.Z);
 	return DoTraverse(VaultMontage, ApproachDirection, { ForwardHit.GetActor(), TopHit.GetActor(), DeepestOnTopHit.GetActor() }, VaultMoveWarpTarget, TraversalTopZ);
 }
@@ -584,7 +608,9 @@ void AMyPlayerCharacter::OnHangTraversalEnded()
 }
 
 void AMyPlayerCharacter::OnVaultTraversalEnded()
+void AMyPlayerCharacter::OnVaultTraversalEnded(bool bTraversalSucceeded)
 {
+	(void)bTraversalSucceeded;
 	RestoreTraversalPhysics();
 }
 
@@ -607,7 +633,6 @@ bool AMyPlayerCharacter::TraceTraversalObstacles(FHitResult& OutHit, const FVect
 	FCollisionQueryParams QueryParams;
 	FCollisionObjectQueryParams ObjectQueryParams;
 	BuildTraversalQueryParams(QueryParams, ObjectQueryParams);
-	const FCollisionShape TraceShape = FCollisionShape::MakeSphere(30.f);
 
 	constexpr float MinApproachAngleDeg = 20.f;
 	const float MinApproachDot = FMath::Cos(FMath::DegreesToRadians(90.f - MinApproachAngleDeg));
@@ -625,13 +650,11 @@ bool AMyPlayerCharacter::TraceTraversalObstacles(FHitResult& OutHit, const FVect
 		const FVector TraceEnd = TraceStart + ForwardDirection * TraversalReachDistance;
 
 		FHitResult Hit;
-		const bool bHit = World->SweepSingleByObjectType(
+		const bool bHit = World->LineTraceSingleByObjectType(
 			Hit,
 			TraceStart,
 			TraceEnd,
-			FQuat::Identity,
 			ObjectQueryParams,
-			TraceShape,
 			QueryParams
 		);
 

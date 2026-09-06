@@ -6,6 +6,7 @@
 #include "Engine/EngineTypes.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Animation/CachedAnimData.h"
+#include "Characters/MyCharacterMovementComponent.h"
 #include "MyAnimInstance.generated.h"
 
 class AMyCharacter;
@@ -13,6 +14,7 @@ class UMyCharacterMovementComponent;
 struct FAnimInstanceProxy;
 struct FAnimUpdateContext;
 struct FAnimNodeReference;
+enum class EMyCustomMovementMode : uint8;
 
 UENUM(BlueprintType)
 enum class ECardinalDirection : uint8
@@ -62,6 +64,8 @@ public:
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	FVector WorldVelocity;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	FVector LocalVelocity;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float Speed = 0.0f;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float MaxSpeed;
@@ -95,6 +99,8 @@ public:
 	bool bIsOnGround = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	TEnumAsByte<EMovementMode> MovementMode = MOVE_None;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	EMyCustomMovementMode CustomMovementMode = EMyCustomMovementMode::None;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bJumpStartedFromMove = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
@@ -206,7 +212,7 @@ public:
 	FORCEINLINE void NotifyPivotEnd() { bPivotExitNotified = true; }
 	FORCEINLINE void NotifyFallLandEnd() { bFallLandEndNotified = true; }
 
-	float ComputeLocomotionPlayRate(float CharacterSpeed) const;
+	float ComputeCycleAnimPlayRate(float CharacterSpeed) const;
 
 	void SetupPivotValues();
 

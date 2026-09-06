@@ -61,6 +61,7 @@ void UMyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	bIsOnGround = MovementComponent->IsMovingOnGround();
 	MovementMode = MovementComponent->MovementMode;
+	CustomMovementMode = static_cast<EMyCustomMovementMode>(MovementComponent->CustomMovementMode);
 	MaxJumpHeight = MovementComponent->GetMaxJumpHeightWithJumpTime();
 	GravityZ = MovementComponent->GetGravityZ();
 	if (MovementMode == MOVE_Falling)
@@ -141,6 +142,7 @@ void UMyAnimInstance::UpdateVelocityData(float DeltaSeconds)
 	bWasMovingLastUpdate = Speed > 0.0f;
 	Speed = WorldVelocity.Size();
 	bHasVelocity = !WorldVelocity.IsZero();
+	LocalVelocity = WorldRotation.UnrotateVector(WorldVelocity);
 }
 
 void UMyAnimInstance::UpdateAccelerationData(float DeltaSeconds)
@@ -330,7 +332,7 @@ void UMyAnimInstance::SetupMoveState()
 	StartAngle = (InputRotation - WorldRotation).GetNormalized().Yaw;
 }
 
-float UMyAnimInstance::ComputeLocomotionPlayRate(float CharacterSpeed) const
+float UMyAnimInstance::ComputeCycleAnimPlayRate(float CharacterSpeed) const
 {
 	float NewPlayRate = UKismetMathLibrary::SafeDivide(CharacterSpeed, FMath::Clamp(GetCurveValue(TEXT("MoveData_Speed")), 50.f, 1000.f));
 	return FMath::Max(0.8f, NewPlayRate);
@@ -338,7 +340,7 @@ float UMyAnimInstance::ComputeLocomotionPlayRate(float CharacterSpeed) const
 
 void UMyAnimInstance::UpdateLocomotionValues()
 {
-	PlayRate = ComputeLocomotionPlayRate(Speed);
+	PlayRate = ComputeCycleAnimPlayRate(Speed);
 }
 
 void UMyAnimInstance::UpdateCharacterRotation()

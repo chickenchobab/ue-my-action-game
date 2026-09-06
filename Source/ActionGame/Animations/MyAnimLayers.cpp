@@ -56,7 +56,6 @@ void UMyAnimLayers::SetupPivotAnim(const FAnimUpdateContext& Context, const FAni
 	float BlendTime = MainAnimInstance->bShouldRepivot ? 0.f : 0.2f;
 	USequenceEvaluatorLibrary::SetSequence(SequenceEvaluator, Sequence);
 
-	MainAnimInstance->PlayRate = MainAnimInstance->ComputeLocomotionPlayRate(MainAnimInstance->PivotInitialSpeed);
 	USequenceEvaluatorLibrary::SetExplicitTime(SequenceEvaluator, 0.0f);
 
 	MainAnimInstance->bShouldRepivot = false;

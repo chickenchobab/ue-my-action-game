@@ -9,6 +9,7 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
+class UInputMappingContext;
 struct FInputActionValue;
 struct FInputActionInstance;
 
@@ -51,6 +52,9 @@ protected:
 	UInputAction* QuitGameAction;
 
 
+	UPROPERTY(EditAnywhere, Category = "Input")
+	TObjectPtr<UInputMappingContext> OnGroundMappingContext;
+
 	UPROPERTY(EditAnywhere, Category = "Traversal")
 	float TraversalReachDistance = 200.f;
 	UPROPERTY(EditAnywhere, Category = "Traversal")
@@ -59,14 +63,14 @@ protected:
 	float TraversalTraceHighestZ = 130.f;
 	UPROPERTY(EditAnywhere, Category = "Traversal")
 	float TraversalTraceLowestZ = -70.f;
-	UPROPERTY(EditAnywhere, Category = "Traversal")
-	float ForwardHandOffset = 10.f;
 
 	UPROPERTY(EditAnywhere, Category = "Traversal")
 	float MaxHangHeightOffset = 400.f;
 	UPROPERTY(EditAnywhere, Category = "Traversal")
 	float MinHangHeightOffset = 150.f;
 
+	UPROPERTY(EditAnywhere, Category = "Traversal")
+	float VaultForwardHandOffset = 10.f;
 	UPROPERTY(EditAnywhere, Category = "Traversal", meta = (ClampMin = "1.0"))
 	float VaultTraceDepthStep = 60.f;
 	UPROPERTY(EditAnywhere, Category = "Traversal")
@@ -88,11 +92,12 @@ public:
 
 	AMyPlayerCharacter(const FObjectInitializer& ObjectInitializer);
 
-	void OnTraversalWarpEnded(const FName& WarpTargetName);
+	void OnTraversalWarpEnded(const FName& WarpTargetName, bool bTraversalSucceeded);
 
 protected:
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
 
 protected:
 
@@ -117,8 +122,7 @@ protected:
 
 	bool DoTraverse(UAnimMontage* Montage, const FVector& FacingDirection, const TArray<AActor*>& ObstacleActors, FName TraversalWarpTarget, float TraversalTopZ);
 
-
-	FORCEINLINE void OnVaultTraversalEnded();
+	FORCEINLINE void OnVaultTraversalEnded(bool bTraversalSucceeded);
 
 	void OnTraversalMontageEnded(UAnimMontage* Montage, bool bInterrupted, uint64 TraversalId, FName TraversalWarpTarget);
 
