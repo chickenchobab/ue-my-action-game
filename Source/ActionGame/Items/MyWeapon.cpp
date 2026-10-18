@@ -24,7 +24,7 @@ static FName GripSocketName = FName(TEXT("WeaponSocket"));
 
 AMyWeapon::AMyWeapon()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.SetTickFunctionEnable(false);
 
 	WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
@@ -53,7 +53,9 @@ void AMyWeapon::Equip(USceneComponent* NewParent, const FName& OverrideAttachedS
 
 	if (USkeletalMeshComponent* MeshParent = Cast<USkeletalMeshComponent>(NewParent))
 	{
-		HitCheckDelegateHandle = MeshParent->OnTickPose.AddUObject(this, &ThisClass::HitCheck);
+		AddTickPrerequisiteComponent(MeshParent);
+		PrimaryActorTick.SetTickFunctionEnable(true);
+
 		if (AnimLayerClass)
 		{
 			MeshParent->LinkAnimClassLayers(AnimLayerClass);
@@ -70,11 +72,9 @@ void AMyWeapon::UnEquip()
 {
 	if (USkeletalMeshComponent* MeshParent = Cast<USkeletalMeshComponent>(RootComponent->GetAttachParent()))
 	{
-		MeshParent->OnTickPose.Remove(HitCheckDelegateHandle);
+		RemoveTickPrerequisiteComponent(MeshParent);
 		MeshParent->UnlinkAnimClassLayers(AnimLayerClass);
 	}
-	
-	HitCheckDelegateHandle.Reset();
 
 	PrimaryActorTick.SetTickFunctionEnable(false);
 
@@ -139,7 +139,14 @@ void AMyWeapon::BeginPlay()
 	Super::BeginPlay();
 }
 
-void AMyWeapon::HitCheck(USkinnedMeshComponent* MeshComp, float DeltaTime, bool bNeedsValidRootMotion)
+void AMyWeapon::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	HitCheck();
+}
+
+void AMyWeapon::HitCheck()
 {
 	if (!bIsEquipped || !bIsAttacking || WeaponSockets.IsEmpty())
 	{

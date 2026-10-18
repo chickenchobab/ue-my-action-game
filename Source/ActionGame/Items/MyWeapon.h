@@ -54,8 +54,9 @@ public:
 protected:
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 
-	virtual void HitCheck(USkinnedMeshComponent* MeshComp, float DeltaTime, bool bNeedsValidRootMotion);
+	virtual void HitCheck();
 
 protected:
 
@@ -80,8 +81,6 @@ private:
 	bool bIsEquipped : 1;
 
 private:
-
-	FDelegateHandle HitCheckDelegateHandle;
 
 	bool bIsAttacking : 1;
 
