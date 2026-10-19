@@ -77,8 +77,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Traversal")
 	float MaxHangHeightOffset = 400.f;
-	UPROPERTY(EditAnywhere, Category = "Traversal")
-	float MinHangHeightOffset = 150.f;
+
+	UPROPERTY(EditAnywhere, Category = "Traversal", meta = (ClampMin = "0.0"))
+	float MaxVaultHeightOffset = 150.f;
 
 	UPROPERTY(EditAnywhere, Category = "Traversal")
 	float VaultForwardHandOffset = 10.f;

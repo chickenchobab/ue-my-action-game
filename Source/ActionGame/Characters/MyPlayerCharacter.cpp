@@ -23,7 +23,6 @@
 #include "Engine/SkeletalMesh.h"
 #include "BonePose.h"
 
-// modified: traversal 시각화 함수와 호출부를 제거했다.
 // Move = Traversal
 static const FName HangJumpWarpTarget(TEXT("Hang_Jump"));
 static const FName MantleJumpWarpTarget(TEXT("Mantle_Jump"));
@@ -396,7 +395,8 @@ bool AMyPlayerCharacter::TryHang(const FHitResult& ForwardHit)
 
 	const FRotator ApproachRotation = ApproachDirection.Rotation();
 
-	const float TopTraceStartZ = ActorLocation.Z + TraversalTraceHighestZ;
+	constexpr float TopTraceMargin = 1.0f;
+	const float TopTraceStartZ = ActorLocation.Z + FMath::Max(TraversalTraceHighestZ, MaxHangHeightOffset + TopTraceMargin);
 	const float TopTraceEndZ = ActorLocation.Z + TraversalTraceLowestZ;
 
 	const float FaceNormalZ = ForwardHit.ImpactNormal.Z;
@@ -460,25 +460,20 @@ bool AMyPlayerCharacter::TryHang(const FHitResult& ForwardHit)
 		return false;
 	}
 
-	if (TopHeightOffset >= MinHangHeightOffset)
+	// TODO: hang montage 선택
+	FTransform HangJumpTarget;
+	GetHandAlignedWarpTransform(HangMontage_FromGround, HangJumpWarpTarget, TopHit.ImpactPoint, ApproachRotation, ETraversalHandAlignment::BothHands, HangJumpTarget);
+
+	WarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(HangJumpWarpTarget, HangJumpTarget.GetLocation(), HangJumpTarget.Rotator());
+
+	const bool bTraversalStarted = DoTraverse(HangMontage_FromGround, ApproachDirection,{ ForwardHit.GetActor(), TopHit.GetActor() }, HangJumpWarpTarget, TopHit.ImpactPoint.Z - ActorLocation.Z);
+	if (bTraversalStarted)
 	{
-		// TODO: hang montage 선택
-		FTransform HangJumpTarget;
-		GetHandAlignedWarpTransform(HangMontage_FromGround, HangJumpWarpTarget, TopHit.ImpactPoint, ApproachRotation, ETraversalHandAlignment::BothHands, HangJumpTarget);
-
-		WarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(HangJumpWarpTarget, HangJumpTarget.GetLocation(), HangJumpTarget.Rotator());
-
-		const bool bTraversalStarted = DoTraverse(HangMontage_FromGround, ApproachDirection,{ ForwardHit.GetActor(), TopHit.GetActor() }, HangJumpWarpTarget, TopHit.ImpactPoint.Z - ActorLocation.Z);
-		if (bTraversalStarted)
-		{
-			CachedHangForwardHit = ForwardHit;
-			CachedHangTopHit = TopHit;
-		}
-
-		return bTraversalStarted;
+		CachedHangForwardHit = ForwardHit;
+		CachedHangTopHit = TopHit;
 	}
 
-	return false;
+	return bTraversalStarted;
 }
 
 bool AMyPlayerCharacter::TryMantle()
@@ -600,7 +595,7 @@ bool AMyPlayerCharacter::TryVault(const FHitResult& ForwardHit, const FVector& V
 	}
 
 	const float TopHeightOffset = TopHit.ImpactPoint.Z - ActorLocation.Z;
-	if (TopHeightOffset >= MinHangHeightOffset)
+	if (TopHeightOffset > MaxVaultHeightOffset)
 	{
 		return false;
 	}
