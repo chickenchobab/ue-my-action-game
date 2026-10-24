@@ -212,35 +212,40 @@ void AMyWeapon::HitCheck()
 					FVector CapsuleBase = CapsuleCenter - UpVector * (HalfHeight - Radius);
 					FVector CapsuleTop = CapsuleCenter + UpVector * (HalfHeight - Radius);
 
-					if (IntersectQuadWithCapsule(Query, CapsuleBase, CapsuleTop, Radius))
+					FVector ImpactPoint = FVector::ZeroVector;
+					if (IntersectQuadWithCapsule(Query, CapsuleBase, CapsuleTop, Radius, ImpactPoint))
 					{
-						HitCheckContext.HitActorsThisFrame.AddUnique(CandidateActor);
+						const bool bAlreadyHitThisFrame = HitCheckContext.HitResultsThisFrame.ContainsByPredicate(
+							[CandidateActor](const FDetectedWeaponHit& HitResult)
+							{
+								return HitResult.Actor == CandidateActor;
+							}
+						);
+						if (!bAlreadyHitThisFrame)
+						{
+							HitCheckContext.HitResultsThisFrame.Add({ CandidateActor, ImpactPoint });
+						}
 					}
 				}
 			}
 		}
 	}
 
-	if (!HitCheckContext.HitActorsThisFrame.IsEmpty())
-	{
-		TArray<AActor*> NewlyHitActors;
-		for (AActor* HitActor : HitCheckContext.HitActorsThisFrame)
-		{
-			if (!HitCheckContext.SkillHandledActors.Contains(HitActor))
-			{
-				NewlyHitActors.Add(HitActor);
-				HitCheckContext.SkillHandledActors.Add(HitActor);
-			}
-		}
 
-		if (!NewlyHitActors.IsEmpty())
+	if (!HitCheckContext.HitResultsThisFrame.IsEmpty())
+	{
+		if (USkillInstance_Attack* ActiveSkill = CurrentActiveSkill.Get())
 		{
-			if (USkillInstance_Attack* ActiveSkill = CurrentActiveSkill.Get())
+			for (const FDetectedWeaponHit& HitResult : HitCheckContext.HitResultsThisFrame)
 			{
-				ActiveSkill->OnAttackHit(GetOwner(), NewlyHitActors);
+				if (IsValid(HitResult.Actor) && !HitCheckContext.SkillHandledActors.Contains(HitResult.Actor))
+				{
+					HitCheckContext.SkillHandledActors.Add(HitResult.Actor);
+					ActiveSkill->OnAttackHit(GetOwner(), HitResult.Actor, HitResult.ImpactPoint);
+				}
 			}
 		}
-		HitCheckContext.HitActorsThisFrame.Empty();
+		HitCheckContext.HitResultsThisFrame.Empty();
 	}
 
 	HitCheckContext.OwnerMeshTransformLastFrame = HitCheckContext.OwnerMesh->GetComponentTransform();
@@ -320,7 +325,11 @@ void AMyWeapon::GetCandidatesByBoxOverlap(TArray<FOverlapResult>& OutCandidates,
 	FCollisionShape BoxShape = FCollisionShape::MakeBox(Extent);
 
 	QueryParams.ClearIgnoredSourceObjects();
-	QueryParams.AddIgnoredActors(HitCheckContext.HitActorsThisFrame);
+	// QueryParams.AddIgnoredActors(HitCheckContext.HitActorsThisFrame);
+	for (const FDetectedWeaponHit& HitResult : HitCheckContext.HitResultsThisFrame)
+	{
+		QueryParams.AddIgnoredActor(HitResult.Actor);
+	}
 	QueryParams.AddIgnoredActor(GetOwner());
 
 	GetWorld()->OverlapMultiByObjectType(
@@ -333,24 +342,46 @@ void AMyWeapon::GetCandidatesByBoxOverlap(TArray<FOverlapResult>& OutCandidates,
 	);
 }
 
-bool AMyWeapon::IntersectQuadWithCapsule(const FWeaponHitQuery& Query, const FVector& CapsuleBase, const FVector& CapsuleTop, float Radius)
+
+bool AMyWeapon::IntersectQuadWithCapsule(const FWeaponHitQuery& Query, const FVector& CapsuleBase, const FVector& CapsuleTop, float Radius, FVector& OutImpactPoint)
 {
-	if (IntersectTriangleWithCapsule(
+	const bool bIntersectsFirstTriangle = IntersectTriangleWithCapsule(
 		Query.Tip_New,
 		Query.Tip_Old,
 		Query.Base_New,
 		CapsuleBase, CapsuleTop, Radius
-	))
-	{
-		return true;
-	}
-
-	return IntersectTriangleWithCapsule(
+	);
+	const bool bIntersectsSecondTriangle = IntersectTriangleWithCapsule(
 		Query.Tip_Old,
 		Query.Base_Old,
 		Query.Base_New,
 		CapsuleBase, CapsuleTop, Radius
 	);
+	if (!bIntersectsFirstTriangle && !bIntersectsSecondTriangle)
+	{
+		return false;
+	}
+
+	const FVector CapsuleCenter = (CapsuleBase + CapsuleTop) * 0.5f;
+	const auto ClosestPointOnSegment = [](const FVector& Point, const FVector& SegmentStart, const FVector& SegmentEnd)
+	{
+		const FVector Segment = SegmentEnd - SegmentStart;
+		const float SegmentLengthSquared = Segment.SizeSquared();
+		if (SegmentLengthSquared <= SMALL_NUMBER)
+		{
+			return SegmentStart;
+		}
+
+		const float Alpha = FMath::Clamp(FVector::DotProduct(Point - SegmentStart, Segment) / SegmentLengthSquared, 0.0f, 1.0f);
+		return SegmentStart + Segment * Alpha;
+	};
+
+	const FVector OldBladePoint = ClosestPointOnSegment(CapsuleCenter, Query.Base_Old, Query.Tip_Old);
+	const FVector NewBladePoint = ClosestPointOnSegment(CapsuleCenter, Query.Base_New, Query.Tip_New);
+	OutImpactPoint = FVector::DistSquared(CapsuleCenter, OldBladePoint) <= FVector::DistSquared(CapsuleCenter, NewBladePoint)
+		? OldBladePoint
+		: NewBladePoint;
+	return true;
 }
 
 bool AMyWeapon::IntersectTriangleWithCapsule(const FVector& V0, const FVector& V1, const FVector& V2, const FVector& CapsuleBase, const FVector& CapsuleTop, float R)
@@ -556,6 +587,7 @@ void AMyWeapon::FHitCheckContext::Reset()
 	WeaponSocketToGripBone.Reset();
 	BoneContainer.Reset();
 
-	HitActorsThisFrame.Empty();
+	// HitActorsThisFrame.Empty();
+	HitResultsThisFrame.Empty();
 	SkillHandledActors.Reset();
 }

@@ -26,7 +26,7 @@ public:
 	virtual void OnSkillMontageBlendingOutStarted(UAnimMontage* Montage, bool bInterrupted) override;
 
 	virtual void OnAttackEnd();
-	virtual void OnAttackHit(AActor* Instigator, TArray<AActor*>& TargetActors);
+	virtual void OnAttackHit(AActor* Instigator, AActor* TargetActor, const FVector& ImpactPoint);
 
 protected:
 	void OnComboWindowExpired();

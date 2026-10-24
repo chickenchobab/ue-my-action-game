@@ -7,6 +7,7 @@
 #include "Items/MyWeapon.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Combat/HitReceiver.h"
 
 bool USkillInstance_Attack::Initialize(UMySkillData* InSkillData, AActor* InAvatarActor, AActor* InSourceItem)
 {
@@ -164,14 +165,30 @@ void USkillInstance_Attack::OnComboWindowExpired()
 	bInAttackComboWindow = false;
 }
 
-void USkillInstance_Attack::OnAttackHit(AActor* Instigator, TArray<AActor*>& TargetActors)
+void USkillInstance_Attack::OnAttackHit(AActor* Instigator, AActor* TargetActor, const FVector& ImpactPoint)
 {
-	UE_LOG(LogTemp, Display, TEXT("Attack Hit"));
-	for (auto TargetActor : TargetActors)
+	if (!IsValid(Instigator) || !IsValid(TargetActor))
 	{
-		if (TargetActor)
-		{
-			UE_LOG(LogTemp, Display, TEXT("%s"), *TargetActor->GetName());
-		}
+		return;
 	}
+
+	IHitReceiver* HitReceiver = Cast<IHitReceiver>(TargetActor);
+	if (!HitReceiver)
+	{
+		return;
+	}
+
+	FVector ImpactDirection = (ImpactPoint - Instigator->GetActorLocation()).GetSafeNormal();
+	if (ImpactDirection.IsNearlyZero())
+	{
+		ImpactDirection = (TargetActor->GetActorLocation() - Instigator->GetActorLocation()).GetSafeNormal();
+	}
+
+	FHitReceiveContext HitContext;
+	HitContext.Instigator = Instigator;
+	HitContext.DamageCauser = Cast<AActor>(SourceItem.Get());
+	HitContext.ImpactPoint = ImpactPoint;
+	HitContext.ImpactDirection = ImpactDirection;
+
+	HitReceiver->ReceiveHit(HitContext);
 }

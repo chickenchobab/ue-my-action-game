@@ -105,7 +105,6 @@ void UMyCombatComponent::OnWeaponSkillReleased(const FInputActionInstance& Actio
 	{
 		if (UMySkillData* SkillData = CurrentWeapon->GetSkillData(SkillType))
 		{
-			// modified
 			if (UMySkillInstance* SkillInstance = FindSkillInstance(SkillData))
 			{
 				if (SkillInstance->IsSkillActive())
@@ -209,7 +208,6 @@ UMySkillInstance* UMyCombatComponent::FindSkillInstance(UMySkillData* SkillData)
 	return SkillInstances.FindRef(SkillData);
 }
 
-// modified: 캐릭터 종료 시 무기 델리게이트와 스킬 타이머가 남지 않게 한다.
 void UMyCombatComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	UnequipCurrentWeapon();

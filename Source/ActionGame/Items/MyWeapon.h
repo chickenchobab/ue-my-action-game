@@ -86,6 +86,12 @@ private:
 
 	TArray<FName> WeaponSockets;
 
+	struct FDetectedWeaponHit
+	{
+		AActor* Actor = nullptr;
+		FVector ImpactPoint = FVector::ZeroVector;
+	};
+
 	// 공격 시작부터 종료까지의 hit 확인을 위해 공통적으로 참조되는 context
 	struct FHitCheckContext
 	{
@@ -101,7 +107,8 @@ private:
 		FBoneContainer BoneContainer;
 		TArray<FTransform> WeaponSocketToGripBone;
 
-		TArray<AActor*> HitActorsThisFrame;
+		// TArray<AActor*> HitActorsThisFrame;
+		TArray<FDetectedWeaponHit> HitResultsThisFrame;
 		TSet<AActor*> SkillHandledActors;
 
 		FORCEINLINE bool IsValid() const;
@@ -125,7 +132,7 @@ private:
 
 	FORCEINLINE void SampleSocketPositions(TArray<FSocketSamples>& OutSamples);
 
-	FORCEINLINE bool IntersectQuadWithCapsule(const FWeaponHitQuery& Query, const FVector& CapsuleBase, const FVector& CapsuleTop, float Radius);
+	FORCEINLINE bool IntersectQuadWithCapsule(const FWeaponHitQuery& Query, const FVector& CapsuleBase, const FVector& CapsuleTop, float Radius, FVector& OutImpactPoint);
 	FORCEINLINE bool IntersectTriangleWithCapsule(const FVector& V0, const FVector& V1, const FVector& V2, const FVector& P0, const FVector& P1, float R);
 
 	FORCEINLINE void InitHitCheckContext(const UAnimMontage* Montage);

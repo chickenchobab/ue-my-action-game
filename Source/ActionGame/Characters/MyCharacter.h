@@ -4,15 +4,17 @@
 
 #include "GameFramework/Character.h"
 #include "GameplayTagAssetInterface.h"
+#include "Combat/HitReceiver.h"
 #include "MyCharacter.generated.h"
 
 class UMyCombatComponent;
 class UMyHealthComponent;
 class UMyStatsComponent;
 class UMotionWarpingComponent;
+class UAnimMontage;
 
 UCLASS()
-class ACTIONGAME_API AMyCharacter : public ACharacter, public IGameplayTagAssetInterface
+class ACTIONGAME_API AMyCharacter : public ACharacter, public IGameplayTagAssetInterface, public IHitReceiver
 {
 	GENERATED_BODY()
 
@@ -33,6 +35,8 @@ public:
 	virtual bool HasAllMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const override;
 	virtual bool HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const override;
 	//~End of IGameplayTagAssetInterface
+
+	virtual void ReceiveHit(const FHitReceiveContext& HitContext) override;
 
 	FORCEINLINE bool IsSprintActive() const { return bIsSprintActive; }
 
@@ -63,6 +67,19 @@ private:
 
 	UPROPERTY(EditDefaultsOnly)
 	TSoftObjectPtr<UCurveTable> AttributeCurveTable;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Hit Reaction")
+	TObjectPtr<UAnimMontage> HitReactionFrontMontage;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Hit Reaction")
+	TObjectPtr<UAnimMontage> HitReactionBackMontage;
+
+	// modified:
+	// UPROPERTY(EditDefaultsOnly, Category = "Hit Reaction")
+	// TObjectPtr<UAnimMontage> HitReactionLeftMontage;
+	//
+	// UPROPERTY(EditDefaultsOnly, Category = "Hit Reaction")
+	// TObjectPtr<UAnimMontage> HitReactionRightMontage;
 
 protected:
 

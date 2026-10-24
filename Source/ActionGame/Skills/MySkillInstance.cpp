@@ -80,7 +80,6 @@ void UMySkillInstance::CancelSkill()
 		return;
 	}
 
-	// modified: 종료 델리게이트를 먼저 해제해 취소와 몽타주 종료가 중복 처리되지 않게 한다.
 	StopActiveMontage();
 	ActiveCount = 1;
 	OnSkillEnd(true);
@@ -101,22 +100,6 @@ void UMySkillInstance::EnableExecution(float Duration)
 
 	if (Duration > 0.0f)
 	{
-		/* modified: 회수할 수 없는 지역 핸들과 raw this 람다를 사용하던 기존 타이머다.
-		FTimerHandle TimerHandle;
-		AvatarActor.Get()->GetWorld()->GetTimerManager().SetTimer(
-			TimerHandle,
-			[this]()
-			{
-				if (ExecutionGrantCount > 0)
-				{
-					--ExecutionGrantCount;
-				}
-			},
-			Duration,
-			false
-		);
-		*/
-		// modified: 객체 바인딩 타이머의 핸들을 보관해 회수 시 모두 취소한다.
 		FTimerHandle& TimerHandle = ExecutionGrantTimerHandles.AddDefaulted_GetRef();
 		AvatarActor.Get()->GetWorld()->GetTimerManager().SetTimer(
 			TimerHandle,
@@ -128,7 +111,6 @@ void UMySkillInstance::EnableExecution(float Duration)
 	}
 }
 
-// modified: 실행 허용 시간 만료는 UObject 바인딩 함수에서 처리한다.
 void UMySkillInstance::ExpireExecutionGrant()
 {
 	if (ExecutionGrantCount > 0)
@@ -214,7 +196,6 @@ bool UMySkillInstance::PlaySkillMontage()
 	return true;
 }
 
-// modified: 인스턴스에 속한 실행 허용 타이머를 일괄 정리한다.
 void UMySkillInstance::ClearExecutionGrantTimers()
 {
 	if (AvatarActor.IsValid())
@@ -229,7 +210,6 @@ void UMySkillInstance::ClearExecutionGrantTimers()
 	ExecutionGrantTimerHandles.Reset();
 }
 
-// modified: 취소 전에 현재 몽타주의 콜백을 해제하고 재생을 중단한다.
 void UMySkillInstance::StopActiveMontage()
 {
 	UAnimInstance* AnimInstance = GetAnimInstanceFromAvatarActor();
