@@ -3,15 +3,18 @@
 #pragma once
 
 #include "Characters/MyCharacter.h"
+
 #include "Logging/LogMacros.h"
 #include "MyPlayerCharacter.generated.h"
 
 class USpringArmComponent;
 class UCameraComponent;
+class UMyTargetLockComponent;
 class UInputAction;
 class UInputMappingContext;
 struct FInputActionValue;
 struct FInputActionInstance;
+struct FTargetLockContext;
 
 class UAnimMontage;
 enum class EWeaponSkillType : uint8;
@@ -35,6 +38,9 @@ class AMyPlayerCharacter : public AMyCharacter
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	UMyTargetLockComponent* TargetLockComponent;
 	
 protected:
 
@@ -57,6 +63,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* MouseLookAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	UInputAction* TargetLockAction;
 
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* QuitGameAction;
@@ -113,11 +122,16 @@ public:
 
 	void OnTraversalWarpEnded(const FName& WarpTargetName, bool bTraversalSucceeded);
 
+	const FTargetLockContext& GetTargetLockContext() const;
+	FORCEINLINE UMyTargetLockComponent* GetTargetLockComponent() const { return TargetLockComponent; }
+	FORCEINLINE bool IsAirborneFromJumpInput() const { return bIsAirborneFromJumpInput; }
+
 protected:
 
 	virtual void BeginPlay() override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
+	virtual void OnJumped_Implementation() override;
 
 protected:
 
@@ -128,7 +142,8 @@ protected:
 
 	void Climb(const FInputActionValue& Value);
 
-	void Look(const FInputActionValue& Value);
+	void Look(const FInputActionInstance& Instance);
+	void ToggleTargetLock();
 
 	void QuitGame(const FInputActionValue& Value);
 
@@ -205,5 +220,9 @@ private:
 
 	FVector DefaultCameraBoomTargetOffset = FVector::ZeroVector;
 	bool bTraversalCameraActive = false;
+
+	// 입력 점프로 떠 있는 동안 true. 착지하거나 낙하가 아닌 이동 모드로 바뀌면 false
+	bool bIsAirborneFromJumpInput = false;
+
 };
 

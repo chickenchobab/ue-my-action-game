@@ -28,7 +28,7 @@ public:
 	FORCEINLINE const UMySkillData* GetSkillData() const { return SkillData; }
 	virtual void HandleSkillReleased(const FInputActionInstance& Instance, const FVector2D& MovementVector);
 
-	void TryExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector);
+	void TryExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector, AActor* LockedTarget);
 	void CancelSkill();
 
 	FORCEINLINE bool IsSkillActive() const { return ActiveCount > 0; }
@@ -41,11 +41,12 @@ protected:
 
 	virtual bool CanExecuteSkill();
 	virtual void CommitCostsAndCooldown();
-	virtual bool ExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector) { return false; }
+	virtual bool ExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector, AActor* LockedTarget) { return false; }
 	virtual void OnSkillEnd(bool bCanceled);
 
 	bool PlaySkillMontage();
-	virtual void OnSkillMontageEnded(UAnimMontage* Montage, bool bInterrupted) {}
+	bool PlaySkillMontage(UAnimMontage* SkillMontage);
+	virtual void OnSkillMontageEnded(UAnimMontage* Montage, bool bInterrupted, int32 MontageInstanceID) {}
 	virtual void OnSkillMontageBlendingOutStarted(UAnimMontage* Montage, bool bInterrupted) {}
 
 	void ExpireExecutionGrant();

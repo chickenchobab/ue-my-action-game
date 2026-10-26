@@ -4,11 +4,13 @@
 #include "Animations/MyAnimLayers.h"
 #include "Animations/MyAnimInstance.h"
 #include "Animations/Libraries/MyAnimFunctionLibrary.h"
+#include "Animation/AnimSequence.h"
 #include "Animation/AnimSequenceBase.h"
 #include "AnimationStateMachineLibrary.h"
+#include "BlendSpacePlayerLibrary.h"
 #include "SequenceEvaluatorLibrary.h"
-#include "AnimExecutionContextLibrary.h"
 #include "SequencePlayerLibrary.h"
+#include "AnimExecutionContextLibrary.h"
 #include "AnimCharacterMovementLibrary.h"
 #include "AnimDistanceMatchingLibrary.h"
 #include "Animation/AnimCurveCompressionCodec_UniformIndexable.h"
@@ -29,18 +31,104 @@ void UMyAnimLayers::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 		return;
 	}
 
-	MainAnimInstance->bShouldRepivot = MainAnimInstance->LocomotionStateLastUpdate == ELocomotionState::Pivot &&
+	MainAnimInstance->bShouldRepivot = 
+		MainAnimInstance->LocomotionStateLastUpdate == ELocomotionState::Pivot &&
 		MainAnimInstance->bAccelDotReversed &&
 		(PivotStartingAcceleration | MainAnimInstance->WorldAcceleration.GetSafeNormal2D()) < -0.5f;
 }
 
-void UMyAnimLayers::SetupCycleState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+void UMyAnimLayers::UpdateCycleBlendSpaceAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
 {
-	MainAnimInstance->bNeedsStartState = true;
+	FBlendSpacePlayerReference BlendSpacePlayer;
+	bool bSuccessed = false;
+	UBlendSpacePlayerLibrary::ConvertToBlendSpacePlayerPure(Node, BlendSpacePlayer, bSuccessed);
+	if (!bSuccessed)
+	{
+		return;
+	}
+
+	float Direction = 0.0f;
+	if (MainAnimInstance->TargetLockContext.bIsTargetLocked)
+	{
+		if (MainAnimInstance->LocalVelocity.IsNearlyZero())
+		{
+			return;
+		}
+		Direction = FMath::RadiansToDegrees(FMath::Atan2(MainAnimInstance->LocalVelocity.Y, MainAnimInstance->LocalVelocity.X));
+	}
+
+	const FVector BlendPosition(Direction, 0.0f, 0.0f);
+	UMyAnimFunctionLibrary::SetBlendSpacePosition(BlendSpacePlayer, BlendPosition);
 }
 
-void UMyAnimLayers::UpdateCycleAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+void UMyAnimLayers::SetupTargetLockTurnInPlaceAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
 {
+	const float TargetLockYawError = FMath::FindDeltaAngleDegrees(
+		MainAnimInstance->WorldRotation.Yaw,
+		MainAnimInstance->TargetLockContext.CharacterTargetRotation.Yaw);
+	const float TargetLockTurnAngle = FMath::Clamp(TargetLockYawError, -TargetLockTurnInPlaceMaxAngle, TargetLockTurnInPlaceMaxAngle);
+	UAnimSequence* Sequence = GetDesiredTargetLockTurnInPlaceSequence(TargetLockTurnAngle);
+	if (!Sequence)
+	{
+		return;
+	}
+
+	FSequencePlayerReference SequencePlayer;
+	bool bSuccessed = false;
+	USequencePlayerLibrary::ConvertToSequencePlayerPure(Node, SequencePlayer, bSuccessed);
+	if (!bSuccessed)
+	{
+		return;
+	}
+
+	USequencePlayerLibrary::SetSequence(SequencePlayer, Sequence);
+	USequencePlayerLibrary::SetAccumulatedTime(SequencePlayer, 0.0f);
+
+	TargetLockTurnInPlaceTarget = MainAnimInstance->TargetLockContext.LockedTarget;
+	MainAnimInstance->SetupTargetLockTurnInPlaceValues(TargetLockTurnAngle);
+}
+
+void UMyAnimLayers::UpdateTargetLockTurnInPlaceState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+{
+	FAnimationStateResultReference StateResult;
+	bool bSucceeded = false;
+	UAnimationStateMachineLibrary::ConvertToAnimationStateResultPure(Node, StateResult, bSucceeded);
+	if (!bSucceeded)
+	{
+		return;
+	}
+
+	if (UAnimationStateMachineLibrary::IsStateBlendingOut(Context, StateResult))
+	{
+		// 블렌드 아웃 커브가 액터 회전을 시작 각도로 되돌리지 않게 한다.
+		MainAnimInstance->TargetLockTurnInPlaceStateWeight = 0.0f;
+		return;
+	}
+	MainAnimInstance->TargetLockTurnInPlaceStateWeight = UAnimExecutionContextLibrary::GetCurrentWeight(Context);;
+}
+
+void UMyAnimLayers::SetupTargetLockTurnInPlaceRecoveryState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+{
+	MainAnimInstance->TargetLockTurnInPlaceStateWeight = 0.0f;
+}
+
+void UMyAnimLayers::SetupTargetLockTurnInPlaceRecoveryAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+{
+	if (!IdleSequence)
+	{
+		return;
+	}
+
+	FSequencePlayerReference SequencePlayer;
+	bool bSuccessed = false;
+	USequencePlayerLibrary::ConvertToSequencePlayerPure(Node, SequencePlayer, bSuccessed);
+	if (!bSuccessed)
+	{
+		return;
+	}
+
+	USequencePlayerLibrary::SetSequence(SequencePlayer, IdleSequence);
+	USequencePlayerLibrary::SetAccumulatedTime(SequencePlayer, 0.0f);
 }
 
 void UMyAnimLayers::SetupHangMoveAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
@@ -84,7 +172,6 @@ void UMyAnimLayers::SetupPivotAnim(const FAnimUpdateContext& Context, const FAni
 	PivotStartingAcceleration = MainAnimInstance->WorldAcceleration.GetSafeNormal2D();
 
 	UAnimSequence* Sequence = GetDesiredPivotSequence();
-	float BlendTime = MainAnimInstance->bShouldRepivot ? 0.f : 0.2f;
 	USequenceEvaluatorLibrary::SetSequence(SequenceEvaluator, Sequence);
 
 	USequenceEvaluatorLibrary::SetExplicitTime(SequenceEvaluator, 0.0f);
@@ -95,7 +182,7 @@ void UMyAnimLayers::SetupPivotAnim(const FAnimUpdateContext& Context, const FAni
 void UMyAnimLayers::UpdatePivotAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
 {
 	// Inertial transition이라 pivot state 하나만 업데이트된다
-	PivotStateWeight = UAnimExecutionContextLibrary::GetCurrentWeight(Context);
+	MainAnimInstance->CurrentPivotStateWeight = UAnimExecutionContextLibrary::GetCurrentWeight(Context);
 
 	FSequenceEvaluatorReference SequenceEvaluator;
 	bool bSuccessed;
@@ -213,7 +300,6 @@ void UMyAnimLayers::SetupFallLandAnim(const FAnimUpdateContext& Context, const F
 	if (bFallLandDistanceCurveValid && MainAnimInstance->GroundDistance <= FallLandStartDistance)
 	{
 		bUseFallLandDistanceMatching = true;
-		bShouldLoopFallLandEvaluator = false;
 		UMyAnimFunctionLibrary::SetSequenceEvaluatorLooping(SequenceEvaluator, false);
 
 		USequenceEvaluatorLibrary::SetSequence(SequenceEvaluator, Fall_Land);
@@ -223,7 +309,6 @@ void UMyAnimLayers::SetupFallLandAnim(const FAnimUpdateContext& Context, const F
 
 	// 아직 범위 밖이면 FallLoop을 이어서 반복 재생한다
 	bUseFallLandDistanceMatching = false;
-	bShouldLoopFallLandEvaluator = true;
 	UMyAnimFunctionLibrary::SetSequenceEvaluatorLooping(SequenceEvaluator, true);
 	if (CachedFallLoopSequence)
 	{
@@ -268,7 +353,6 @@ void UMyAnimLayers::UpdateFallLandAnim(const FAnimUpdateContext& Context, const 
 
 	if (bUseFallLandDistanceMatching)
 	{
-		bShouldLoopFallLandEvaluator = false;
 		UMyAnimFunctionLibrary::SetSequenceEvaluatorLooping(SequenceEvaluator, false);
 
 		const float DistanceToMatch = FMath::Clamp(
@@ -279,21 +363,69 @@ void UMyAnimLayers::UpdateFallLandAnim(const FAnimUpdateContext& Context, const 
 	}
 
 	// 아직 커브 범위 밖이라 FallLoop을 계속 반복 재생한다
-	bShouldLoopFallLandEvaluator = true;
 	UMyAnimFunctionLibrary::SetSequenceEvaluatorLooping(SequenceEvaluator, true);
 	USequenceEvaluatorLibrary::AdvanceTime(Context, SequenceEvaluator, 1.0f);
 }
 
-UAnimSequence* UMyAnimLayers::GetDesiredCycleSequence()
+bool UMyAnimLayers::ShouldEnterTargetLockTurnInPlace() const
 {
-	if (!MainAnimInstance->bIsRunning)
+	if (!MainAnimInstance->CanUseTargetLockTurnInPlace())
 	{
-		return WalkForward;
+		return false;
 	}
-	else
+
+	const float TargetLockYawError = FMath::FindDeltaAngleDegrees(
+		MainAnimInstance->WorldRotation.Yaw,
+		MainAnimInstance->TargetLockContext.CharacterTargetRotation.Yaw);
+	return FMath::Abs(TargetLockYawError) >= TargetLockTurnInPlaceStartAngle;
+}
+
+bool UMyAnimLayers::HasTargetLockTurnInPlaceTargetChanged() const
+{
+	return TargetLockTurnInPlaceTarget != MainAnimInstance->TargetLockContext.LockedTarget;
+}
+
+bool UMyAnimLayers::ShouldReenterTargetLockTurnInPlace() const
+{
+	if (!MainAnimInstance->CanUseTargetLockTurnInPlace())
 	{
-		return Run;
+		return false;
 	}
+
+	const float TargetLockYawError = FMath::FindDeltaAngleDegrees(
+		MainAnimInstance->WorldRotation.Yaw,
+		MainAnimInstance->TargetLockContext.CharacterTargetRotation.Yaw);
+	return FMath::Abs(TargetLockYawError) >= TargetLockTurnInPlaceStartAngle;
+}
+
+bool UMyAnimLayers::ShouldExitTargetLockTurnInPlaceRecovery() const
+{
+	if (!MainAnimInstance->CanUseTargetLockTurnInPlace())
+	{
+		return true;
+	}
+
+	const float TargetLockYawError = FMath::FindDeltaAngleDegrees(
+		MainAnimInstance->WorldRotation.Yaw,
+		MainAnimInstance->TargetLockContext.CharacterTargetRotation.Yaw);
+	return FMath::Abs(TargetLockYawError) < TargetLockTurnInPlaceStartAngle;
+}
+
+UAnimSequence* UMyAnimLayers::GetDesiredTargetLockTurnInPlaceSequence(float SignedTurnAngle) const
+{
+	const bool bTurnRight = SignedTurnAngle > 0.0f;
+	const bool bUse180 = FMath::Abs(SignedTurnAngle) >= TargetLockTurnInPlace180Threshold;
+
+	if (bUse180)
+	{
+		UAnimSequence* Turn180Sequence = bTurnRight ? TargetLockTurnInPlaceRight180 : TargetLockTurnInPlaceLeft180;
+		if (Turn180Sequence)
+		{
+			return Turn180Sequence;
+		}
+	}
+
+	return bTurnRight ? TargetLockTurnInPlaceRight90 : TargetLockTurnInPlaceLeft90;
 }
 
 UAnimSequence* UMyAnimLayers::GetDesiredHangMoveSequence()

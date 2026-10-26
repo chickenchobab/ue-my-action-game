@@ -6,6 +6,17 @@
 #include "Combat/MyCombatComponent.h"
 #include "Items/MyWeapon.h"
 #include "Attributes/MyGameplayTags.h"
+#include "Animation/ActiveMontageInstanceScope.h"
+
+namespace
+{
+	int32 GetMontageInstanceID(const FAnimNotifyEventReference& EventReference)
+	{
+		const UE::Anim::FAnimNotifyMontageInstanceContext* MontageContext =
+			EventReference.GetContextData<UE::Anim::FAnimNotifyMontageInstanceContext>();
+		return MontageContext ? MontageContext->MontageInstanceID : INDEX_NONE;
+	}
+}
 
 void UAnimNotifyState_MeleeHit::NotifyBegin(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, float TotalDuration, const FAnimNotifyEventReference& EventReference)
 {
@@ -16,7 +27,7 @@ void UAnimNotifyState_MeleeHit::NotifyBegin(USkeletalMeshComponent* MeshComp, UA
 		MeshOwnerCharacter->AddStatusTag(MyGameplayTags::Status_Channeling);
 		if (AMyWeapon* Weapon = MeshOwnerCharacter->GetCombatComponent()->GetCurrentWeapon())
 		{
-			Weapon->OnAttackBegin();
+			Weapon->OnAttackBegin(GetMontageInstanceID(EventReference), bAdvancesAttackCombo);
 		}
 	}
 }
@@ -30,7 +41,7 @@ void UAnimNotifyState_MeleeHit::NotifyEnd(USkeletalMeshComponent* MeshComp, UAni
 		MeshOwnerCharacter->RemoveStatusTag(MyGameplayTags::Status_Channeling);
 		if (AMyWeapon* Weapon = MeshOwnerCharacter->GetCombatComponent()->GetCurrentWeapon())
 		{
-			Weapon->OnAttackEnd();
+			Weapon->OnAttackEnd(GetMontageInstanceID(EventReference), bAdvancesAttackCombo);
 		}
 	}
 }

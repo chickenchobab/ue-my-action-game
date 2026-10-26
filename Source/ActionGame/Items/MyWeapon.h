@@ -45,8 +45,8 @@ public:
 	virtual void UnEquip();
 
 	void InitWeaponForAttack(USkillInstance_Attack* Skill, const UAnimMontage* SkillMontage);
-	void OnAttackBegin();
-	void OnAttackEnd();
+	void OnAttackBegin(int32 MontageInstanceID, bool bAdvancesAttackCombo);
+	void OnAttackEnd(int32 MontageInstanceID, bool bAdvancesAttackCombo);
 
 	FORCEINLINE UMySkillData* GetSkillData(EWeaponSkillType SkillType) const { return SkillSet.FindRef(SkillType); }
 	FORCEINLINE const TMap<EWeaponSkillType, TObjectPtr<UMySkillData>>& GetSkillSet() const { return SkillSet; }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "BlendSpacePlayerLibrary.h"
 #include "SequenceEvaluatorLibrary.h"
 #include "MyAnimFunctionLibrary.generated.h"
 
@@ -12,6 +13,11 @@ class ACTIONGAME_API UMyAnimFunctionLibrary : public UBlueprintFunctionLibrary
 	GENERATED_BODY()
 
 public:
+
+	UFUNCTION(BlueprintCallable, Category = "Animation|Blend Space Player", meta = (BlueprintThreadSafe))
+	static FBlendSpacePlayerReference SetBlendSpacePosition(
+		const FBlendSpacePlayerReference& BlendSpacePlayer,
+		const FVector& BlendPosition);
 
 	UFUNCTION(BlueprintPure, Category = "Animation|Curves", meta = (BlueprintThreadSafe))
 	static float FindTimeFromMonotonicCurve(

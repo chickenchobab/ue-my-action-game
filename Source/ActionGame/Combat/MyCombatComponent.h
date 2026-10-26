@@ -38,7 +38,7 @@ public:
 	FORCEINLINE bool GetSkillEnabled() const { return bSkillEnabled; }
 	FORCEINLINE void SetSkillEnabled(bool bEnabled) { bSkillEnabled = bEnabled; }
 
-	void OnWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector);
+	void OnWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector, AActor* LockedTarget);
 	void OnWeaponSkillReleased(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector);
 
 	UMySkillInstance* FindSkillInstance(UMySkillData* SkillData) const;

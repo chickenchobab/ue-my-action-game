@@ -1,11 +1,26 @@
 #include "Animations/Libraries/MyAnimFunctionLibrary.h"
 #include "Animation/AnimCurveCompressionCodec_UniformIndexable.h"
 #include "Animation/AnimSequenceBase.h"
+#include "AnimNodes/AnimNode_BlendSpacePlayer.h"
 #include "AnimNodes/AnimNode_SequenceEvaluator.h"
 #include "Animation/AnimInertializationRequest.h"
 #include "Animation/AnimNode_Inertialization.h"
 #include "Animation/AnimInstanceProxy.h"
 #include "Animation/AnimTrace.h"
+
+FBlendSpacePlayerReference UMyAnimFunctionLibrary::SetBlendSpacePosition(
+	const FBlendSpacePlayerReference& BlendSpacePlayer,
+	const FVector& BlendPosition)
+{
+	BlendSpacePlayer.CallAnimNodeFunction<FAnimNode_BlendSpacePlayer>(
+		TEXT("SetBlendSpacePosition"),
+		[BlendPosition](FAnimNode_BlendSpacePlayer& InBlendSpacePlayer)
+		{
+			InBlendSpacePlayer.SetPosition(BlendPosition);
+		});
+
+	return BlendSpacePlayer;
+}
 
 float UMyAnimFunctionLibrary::FindTimeFromMonotonicCurve(
 	const UAnimSequenceBase* Sequence,

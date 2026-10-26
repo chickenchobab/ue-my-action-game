@@ -14,6 +14,8 @@ class ACTIONGAME_API UAnimNotifyState_MeleeHit : public UAnimNotifyState
 	GENERATED_BODY()
 	
 public:
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	bool bAdvancesAttackCombo = true;
 
 	virtual void NotifyBegin(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, float TotalDuration, const FAnimNotifyEventReference& EventReference) override;
 	virtual void NotifyEnd(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, const FAnimNotifyEventReference& EventReference) override;

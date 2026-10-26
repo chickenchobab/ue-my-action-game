@@ -28,6 +28,10 @@ AMyCharacter::AMyCharacter(const FObjectInitializer& ObjectInitializer)
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
+	// 캐릭터는 카메라 스프링 암의 장애물로 취급하지 않는다.
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+
 	GetCharacterMovement()->GravityScale = 1.0f;
 	GetCharacterMovement()->MaxWalkSpeed = 180.f;
 

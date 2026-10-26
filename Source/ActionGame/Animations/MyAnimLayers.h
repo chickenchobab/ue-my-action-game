@@ -6,10 +6,12 @@
 #include "MyAnimLayers.generated.h"
 
 class UMyAnimInstance;
+class AActor;
 struct FAnimNodeReference;
 struct FAnimUpdateContext;
 class UAnimSequence;
 class UAnimSequenceBase;
+class UBlendSpace;
 
 UCLASS()
 class ACTIONGAME_API UMyAnimLayers : public UAnimInstance
@@ -28,9 +30,24 @@ protected:
 	UMyAnimInstance* MainAnimInstance;
 
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
-	void SetupCycleState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	void UpdateCycleBlendSpaceAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+
+	UFUNCTION(BlueprintPure, meta = (BlueprintThreadSafe))
+	bool ShouldEnterTargetLockTurnInPlace() const;
+	UFUNCTION(BlueprintPure, meta = (BlueprintThreadSafe))
+	bool HasTargetLockTurnInPlaceTargetChanged() const;
+	UFUNCTION(BlueprintPure, meta = (BlueprintThreadSafe))
+	bool ShouldReenterTargetLockTurnInPlace() const;
+	UFUNCTION(BlueprintPure, meta = (BlueprintThreadSafe))
+	bool ShouldExitTargetLockTurnInPlaceRecovery() const;
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
-	void UpdateCycleAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	void UpdateTargetLockTurnInPlaceState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void SetupTargetLockTurnInPlaceAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void SetupTargetLockTurnInPlaceRecoveryState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void SetupTargetLockTurnInPlaceRecoveryAnim(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
 
 
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
@@ -63,7 +80,7 @@ protected:
 
 private:
 
-	FORCEINLINE UAnimSequence* GetDesiredCycleSequence();
+	UAnimSequence* GetDesiredTargetLockTurnInPlaceSequence(float SignedTurnAngle) const;
 	FORCEINLINE UAnimSequence* GetDesiredHangMoveSequence();
 	FORCEINLINE UAnimSequence* GetDesiredPivotSequence();
 
@@ -87,10 +104,27 @@ private:
 
 	bool CacheFallLandDistanceCurveData();
 
+	TWeakObjectPtr<AActor> TargetLockTurnInPlaceTarget;
+
 protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Idle"))
 	TObjectPtr<UAnimSequence> IdleSequence;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|TurnInPlace"))
+	TObjectPtr<UAnimSequence> TargetLockTurnInPlaceLeft90;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|TurnInPlace"))
+	TObjectPtr<UAnimSequence> TargetLockTurnInPlaceRight90;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|TurnInPlace"))
+	TObjectPtr<UAnimSequence> TargetLockTurnInPlaceLeft180;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|TurnInPlace"))
+	TObjectPtr<UAnimSequence> TargetLockTurnInPlaceRight180;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "TurnInPlace", ClampMin = "0.0", ClampMax = "180.0"))
+	float TargetLockTurnInPlaceStartAngle = 30.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "TurnInPlace", ClampMin = "90.0", ClampMax = "180.0"))
+	float TargetLockTurnInPlace180Threshold = 135.0f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "TurnInPlace", ClampMin = "0.0", ClampMax = "180.0"))
+	float TargetLockTurnInPlaceMaxAngle = 180.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|WalkStart"))
 	TObjectPtr<UAnimSequence> WalkStartLeft180;
@@ -117,14 +151,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Cycle"))
 	TObjectPtr<UAnimSequence> WalkForward;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Cycle"))
-	TObjectPtr<UAnimSequence> WalkBackward;
+	TObjectPtr<UAnimSequence> RunForward;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Cycle"))
-	TObjectPtr<UAnimSequence> WalkLeft;
+	TObjectPtr<UBlendSpace> WalkBlendSpace;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Cycle"))
-	TObjectPtr<UAnimSequence> WalkRight;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Cycle"))
-	TObjectPtr<UAnimSequence> Run;
+	TObjectPtr<UBlendSpace> RunBlendSpace;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Category = "AnimSet|Stop"))
 	TObjectPtr<UAnimSequence> WalkStop;
@@ -160,12 +191,6 @@ protected:
 	TObjectPtr<UAnimSequence> RunPivot_TurnRight;
 	UPROPERTY(EditDefaultsOnly, meta = (Category = "AnimSet|Pivot"))
 	TObjectPtr<UAnimSequence> RunPivot_TurnLeft;
-
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly, meta = (Category = "Pivot"))
-	float PivotStateWeight;
-
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly, meta = (Category = "Fall"))
-	bool bShouldLoopFallLandEvaluator = true;
 
 	FVector PivotStartingAcceleration;
 };

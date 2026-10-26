@@ -3,6 +3,7 @@
 
 #include "Animations/MyAnimInstance.h"
 #include "Characters/MyCharacter.h"
+#include "Characters/MyPlayerCharacter.h"
 #include "Characters/MyCharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "KismetAnimationLibrary.h"
@@ -35,8 +36,6 @@ void UMyAnimInstance::NativeInitializeAnimation()
 	WalkStateData.StateName = TEXT("Walk");
 	RunStateData.StateMachineName = TEXT("Locomotion");
 	RunStateData.StateName = TEXT("Run");
-	PivotStateData.StateMachineName = TEXT("Locomotion");
-	PivotStateData.StateName = TEXT("Pivot");
 }
 
 void UMyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
@@ -54,7 +53,15 @@ void UMyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	Location = Character->GetActorLocation();
 	WorldRotation = Character->GetActorRotation();
-	Forward = Character->GetActorForwardVector();
+
+	if (const AMyPlayerCharacter* PlayerCharacter = Cast<AMyPlayerCharacter>(Character))
+	{
+		TargetLockContext = PlayerCharacter->GetTargetLockContext();
+	}
+	else
+	{
+		TargetLockContext = FTargetLockContext();
+	}
 
 	InputVector = MovementComponent->GetLastInputVector();
 	InputVector = UKismetMathLibrary::ClampVectorSize(InputVector, 0.f, 1.f);
@@ -63,7 +70,6 @@ void UMyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	MovementMode = MovementComponent->MovementMode;
 	CustomMovementMode = static_cast<EMyCustomMovementMode>(MovementComponent->CustomMovementMode);
 	MaxJumpHeight = MovementComponent->GetMaxJumpHeightWithJumpTime();
-	GravityZ = MovementComponent->GetGravityZ();
 	if (MovementMode == MOVE_Falling)
 	{
 		const float GroundRangeBase = FMath::Max(MaxJumpHeight, InitialJumpMaxHeight);
@@ -81,11 +87,26 @@ void UMyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	}
 
 	bIsRunning = Character->IsSprintActive();
-	bHasRootMotion = Character->HasAnyRootMotion();
+	// HasAnyRootMotion()은 Root Motion Source만 검사하므로 몽타주 루트 모션도 별도로 포함한다.
+	bHasRootMotion = Character->IsPlayingRootMotion() || Character->HasAnyRootMotion();
 }
 
 void UMyAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 {
+	CurrentPivotStateWeight = 0.0f;
+	TargetLockTurnInPlaceStateWeight = 0.0f;
+
+	if (bWasTargetLocked != TargetLockContext.bIsTargetLocked)
+	{
+		bNeedsStartState = !TargetLockContext.bIsTargetLocked;
+	}
+
+	if (bWasTargetLocked && !TargetLockContext.bIsTargetLocked)
+	{
+		PrimaryTargetRotation = SecondaryTargetRotation = WorldRotation;
+	}
+	bWasTargetLocked = TargetLockContext.bIsTargetLocked;
+
 	UpdateLocationData(DeltaSeconds);
 	UpdateRotationData(DeltaSeconds);
 	UpdateVelocityData(DeltaSeconds);
@@ -94,14 +115,6 @@ void UMyAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 
 	LocomotionStateLastUpdate = LocomotionState;
 	DetermineLocomotionState();
-	if (LocomotionState == ELocomotionState::Walk || LocomotionState == ELocomotionState::Run)
-	{
-		if (LocomotionState != LocomotionStateLastUpdate)
-		{
-			SetupMoveState();
-		}
-		UpdateLocomotionValues();
-	}
 
 	bIsFirstUpdate = false;
 }
@@ -139,7 +152,6 @@ void UMyAnimInstance::UpdateRotationData(float DeltaSeconds)
 
 void UMyAnimInstance::UpdateVelocityData(float DeltaSeconds)
 {
-	bWasMovingLastUpdate = Speed > 0.0f;
 	Speed = WorldVelocity.Size();
 	bHasVelocity = !WorldVelocity.IsZero();
 	LocalVelocity = WorldRotation.UnrotateVector(WorldVelocity);
@@ -151,13 +163,10 @@ void UMyAnimInstance::UpdateAccelerationData(float DeltaSeconds)
 
 	const FVector AccelerationNormal2D = WorldAcceleration.GetSafeNormal2D();
 	VelocityAccelDot = WorldVelocity.GetSafeNormal2D() | AccelerationNormal2D;
-	ForwardAccelDot = Forward | AccelerationNormal2D;
 
 	const bool bHasOppositeAccelLastUpdate = bHasOppositeAccel;
-	bHasOppositeAccel = VelocityAccelDot < -0.5f/*|| ForwardAccelDot < -0.5f*/;
+	bHasOppositeAccel = VelocityAccelDot < -0.5f;
 	bAccelDotReversed = !bHasOppositeAccelLastUpdate && bHasOppositeAccel;
-
-	VelocityAccelDotLastUpdate = VelocityAccelDot;
 }
 
 void UMyAnimInstance::UpdateJumpFallData(float DeltaSeconds)
@@ -215,19 +224,6 @@ void UMyAnimInstance::UpdateJumpFallData(float DeltaSeconds)
 			WorldVelocity.SizeSquared2D() > FMath::Square(JumpFromMoveSpeedThreshold);
 	}
 
-	TimeToJumpApex = bIsJumping && (-GravityZ) > UE_KINDA_SMALL_NUMBER ? WorldVelocity.Z / (-GravityZ) : 0.0f;
-
-	if (MovementMode == MOVE_Falling && (-GravityZ) > UE_SMALL_NUMBER)
-	{
-		const float Discriminant = WorldVelocity.Z * WorldVelocity.Z + 2.0f * (-GravityZ) * GroundDistance;
-
-		TimeToLand = (WorldVelocity.Z + FMath::Sqrt(FMath::Max(Discriminant, 0.0f))) / (-GravityZ);
-		TimeToLand = FMath::Max(TimeToLand, 0.0f);
-	}
-	else
-	{
-		TimeToLand = 0.0f;
-	}
 }
 
 void UMyAnimInstance::DetermineLocomotionState()
@@ -247,8 +243,17 @@ void UMyAnimInstance::DetermineLocomotionState()
 	}
 	else if (VelocityAccelDot < -0.5f)
 	{
-		LocomotionState = (CanEnterPivot() ? ELocomotionState::Pivot : ELocomotionState::Idle);
-		return;
+		if (CanEnterPivot())
+		{
+			LocomotionState = ELocomotionState::Pivot;
+			return;
+		}
+
+		if (InputVector.IsNearlyZero())
+		{
+			LocomotionState = ELocomotionState::Idle;
+			return;
+		}
 	}
 
 	if (IsMovementWithinThresholds(1.f, 500.f, 0.5))
@@ -267,6 +272,11 @@ void UMyAnimInstance::DetermineLocomotionState()
 
 bool UMyAnimInstance::CanEnterPivot() const
 {
+	if (TargetLockContext.bIsTargetLocked)
+	{
+		return false;
+	}
+
 	if (LocomotionState != ELocomotionState::Walk && LocomotionState != ELocomotionState::Run)
 	{
 		UE_LOG(LogTemp, Display, TEXT("Pivot failed(%d) : Should be moving"), GFrameNumber);
@@ -290,6 +300,11 @@ bool UMyAnimInstance::CanEnterPivot() const
 
 bool UMyAnimInstance::ShouldExitPivot() const
 {
+	if (TargetLockContext.bIsTargetLocked)
+	{
+		return true;
+	}
+
 	if (!bHasAcceleration || bHasRootMotion)
 	{
 		return true;
@@ -313,20 +328,36 @@ void UMyAnimInstance::SetupPivotValues()
 	bPivotExitNotified = false;
 }
 
+bool UMyAnimInstance::CanUseTargetLockTurnInPlace() const
+{
+	return TargetLockContext.bIsTargetLocked &&
+		bIsOnGround &&
+		!bHasRootMotion &&
+		LocomotionState == ELocomotionState::Idle;
+}
+
+void UMyAnimInstance::SetupTargetLockTurnInPlaceValues(float SignedTurnAngle)
+{
+	TargetLockTurnInPlaceAngle = FRotator::NormalizeAxis(SignedTurnAngle);
+
+	FRotator TargetRotation = WorldRotation;
+	TargetRotation.Yaw = FRotator::NormalizeAxis(WorldRotation.Yaw + TargetLockTurnInPlaceAngle);
+	PrimaryTargetRotation = SecondaryTargetRotation = TargetRotation;
+}
+
 void UMyAnimInstance::SetupMoveState()
 {
-	float& StartAngle = LocomotionState == ELocomotionState::Walk ? WalkStartAngle : RunStartAngle;
+	StartAngle = 0.0f;
+
+	bNeedsStartState = LocomotionStateLastUpdate != ELocomotionState::Pivot &&
+		!TargetLockContext.bIsTargetLocked;
+	if (!bNeedsStartState)
+	{
+		return;
+	}
 
 	const float InputRotationYaw = InputVector.IsNearlyZero() ? WorldRotation.Yaw : InputVector.Rotation().Yaw;
 	const FRotator InputRotation = FRotator(0.f, InputRotationYaw, 0.f);
-
-	if (LocomotionStateLastUpdate == ELocomotionState::Pivot)
-	{
-		bNeedsStartState = false; // Anim layer의 cycle state에서 토글할 것이다
-		StartAngle = 0.0f;
-		return;
-	}
-	bNeedsStartState = true;
 
 	PrimaryTargetRotation = SecondaryTargetRotation = InputRotation;
 	StartAngle = (InputRotation - WorldRotation).GetNormalized().Yaw;
@@ -338,9 +369,45 @@ float UMyAnimInstance::ComputeCycleAnimPlayRate(float CharacterSpeed) const
 	return FMath::Max(0.8f, NewPlayRate);
 }
 
-void UMyAnimInstance::UpdateLocomotionValues()
+float UMyAnimInstance::CalculateCurveRotationYaw()
 {
-	PlayRate = ComputeCycleAnimPlayRate(Speed);
+	float StateWeight = 0.0f;
+	float RotationAngle = 0.0f;
+	FName RotationCurveName = NAME_None;
+
+	if (LocomotionState == ELocomotionState::Pivot)
+	{
+		StateWeight = CurrentPivotStateWeight;
+		RotationAngle = PivotAngle;
+		RotationCurveName = TEXT("MoveData_PivotRotationDelta");
+	}
+	else if (LocomotionState == ELocomotionState::Walk)
+	{
+		// start curve 값이 0인 이후부터 cycle로 전이되므로 start state 대신 walk state를 사용해도 괜찮다
+		StateWeight = UCachedAnimDataLibrary::StateMachine_GetGlobalWeight(this, WalkStateData);
+		RotationAngle = StartAngle;
+		RotationCurveName = TEXT("MoveData_WalkRotationDelta");
+	}
+	else if (LocomotionState == ELocomotionState::Run)
+	{
+		// start curve 값이 0인 이후부터 cycle로 전이되므로 start state 대신 run state를 사용해도 괜찮다
+		StateWeight = UCachedAnimDataLibrary::StateMachine_GetGlobalWeight(this, RunStateData);
+		RotationAngle = StartAngle;
+		RotationCurveName = TEXT("MoveData_RunRotationDelta");
+	}
+	else
+	{
+		StateWeight = TargetLockTurnInPlaceStateWeight;
+		RotationAngle = TargetLockTurnInPlaceAngle;
+		RotationCurveName = TEXT("IdleData_TurnInPlaceRotationDelta");
+	}
+
+	const float ClampedStateWeight = FMath::Clamp(StateWeight, 0.0f, 1.0f);
+	const float SourceCurveYaw = GetCurveValue(RotationCurveName);
+	const float NormalizedCurveYaw = UKismetMathLibrary::SafeDivide(SourceCurveYaw, ClampedStateWeight);
+	const float ScaledCurveYaw = NormalizedCurveYaw * -RotationAngle;
+
+	return FMath::Lerp(-RotationAngle, ScaledCurveYaw, ClampedStateWeight);
 }
 
 void UMyAnimInstance::UpdateCharacterRotation()
@@ -351,78 +418,96 @@ void UMyAnimInstance::UpdateCharacterRotation()
 		return;
 	}
 
-	if (!UCachedAnimDataLibrary::StateMachine_IsStateRelevant(this, LocomotionStateData) || bHasRootMotion)
+	if (bHasRootMotion)
 	{
 		PrimaryTargetRotation = SecondaryTargetRotation = WorldRotation;
 		return;
 	}
 
-	if (LocomotionState != ELocomotionState::Walk && LocomotionState != ELocomotionState::Run
-		&& LocomotionState != ELocomotionState::Pivot)
+	if (!UCachedAnimDataLibrary::StateMachine_IsStateRelevant(this, LocomotionStateData))
+	{
+		PrimaryTargetRotation = SecondaryTargetRotation = WorldRotation;
+		return;
+	}
+
+	const bool bIsTargetLockTurnInPlace =
+		CanUseTargetLockTurnInPlace() &&
+		TargetLockTurnInPlaceStateWeight > UE_KINDA_SMALL_NUMBER;
+	const bool bHasRotationCurve = LocomotionState != ELocomotionState::Idle;
+	if (!bHasRotationCurve && !bIsTargetLockTurnInPlace)
 	{
 		return;
 	}
 
-	FName RotationCurveName;
-	const FCachedAnimStateData* StateData = nullptr;
-
-	if (LocomotionState == ELocomotionState::Pivot)
-	{
-		RotationCurveName = TEXT("MoveData_PivotRotationDelta");
-		StateData = &PivotStateData;
-	}
-	else if (LocomotionState == ELocomotionState::Walk)
-	{
-		RotationCurveName = TEXT("MoveData_WalkRotationDelta");
-		StateData = &WalkStateData;
-	}
-	else
-	{
-		RotationCurveName = TEXT("MoveData_RunRotationDelta");
-		StateData = &RunStateData;
-	}
-
 	// pivot 모션의 회전 방향과 반대로 회전하는 증상을 방지하기 위해
-	if (LocomotionState != ELocomotionState::Pivot && !InputVector.IsNearlyZero())
+	if (!bIsTargetLockTurnInPlace && LocomotionState != ELocomotionState::Pivot)
 	{
-		PrimaryTargetRotation = FMath::RInterpConstantTo(PrimaryTargetRotation, InputVector.Rotation(), GetDeltaSeconds(), PrimaryRotationInterpSpeed);
+		if (TargetLockContext.bIsTargetLocked)
+		{
+			PrimaryTargetRotation = TargetLockContext.CharacterTargetRotation;
+		}
+		else if (!InputVector.IsNearlyZero())
+		{
+			PrimaryTargetRotation = FMath::RInterpConstantTo(PrimaryTargetRotation, InputVector.Rotation(), GetDeltaSeconds(), PrimaryRotationInterpSpeed);
+		}
 	}
 	SecondaryTargetRotation = FMath::RInterpTo(SecondaryTargetRotation, PrimaryTargetRotation, GetDeltaSeconds(), SecondaryRotationInterpSpeed);
 
-	// 애니메이션의 시각 정합성을 위해 커브 값을 an이 아니라 (1 - w)a + (w)an으로 구웠다
-	// 회전 모션이 실제로 보이는 정도와 회전을 일치시키기 위해
-	const float StateWeight = UCachedAnimDataLibrary::StateMachine_GetGlobalWeight(this, *StateData);
-	float CurveRotationYaw = UKismetMathLibrary::SafeDivide(GetCurveValue(RotationCurveName), StateWeight);
-	FRotator NewRotation = UKismetMathLibrary::MakeRotator(SecondaryTargetRotation.Roll, SecondaryTargetRotation.Pitch, SecondaryTargetRotation.Yaw + CurveRotationYaw);
+	const float CurveRotationYaw = CalculateCurveRotationYaw();
+
+	FRotator NewRotation = UKismetMathLibrary::MakeRotator(
+		SecondaryTargetRotation.Roll, SecondaryTargetRotation.Pitch, SecondaryTargetRotation.Yaw + CurveRotationYaw);
 	Character->SetActorRotation(NewRotation);
 }
 
 void UMyAnimInstance::SetupIdleState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
 {
+	const bool bWasMoving = LocomotionStateLastUpdate == ELocomotionState::Walk ||
+		LocomotionStateLastUpdate == ELocomotionState::Run;
+
+	bNeedsStopState = bWasMoving &&
+		bIsOnGround &&
+		!bHasRootMotion &&
+		!TargetLockContext.bIsTargetLocked &&
+		InputVector.IsNearlyZero();
 }
 
-void UMyAnimInstance::UpdateIdleState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+void UMyAnimInstance::SetupWalkState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
 {
+	if (LocomotionStateLastUpdate == ELocomotionState::Walk)
+	{
+		// 애님 그래프만 재초기화된 경우 Start를 다시 재생하지 않는다.
+		bNeedsStartState = false;
+		StartAngle = 0.0f;
+		return;
+	}
+
+	SetupMoveState();
+}
+
+void UMyAnimInstance::SetupRunState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
+{
+	if (LocomotionStateLastUpdate == ELocomotionState::Run)
+	{
+		// 애님 그래프만 재초기화된 경우 Start를 다시 재생하지 않는다.
+		bNeedsStartState = false;
+		StartAngle = 0.0f;
+		return;
+	}
+
+	SetupMoveState();
 }
 
 void UMyAnimInstance::UpdateWalkState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
 {
 	WalkStateWeight = UAnimExecutionContextLibrary::GetCurrentWeight(Context);
+	PlayRate = ComputeCycleAnimPlayRate(Speed);
 }
 
 void UMyAnimInstance::UpdateRunState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
 {
 	RunStateWeight = UAnimExecutionContextLibrary::GetCurrentWeight(Context);
-}
-
-void UMyAnimInstance::SetupPivotState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
-{
-	// Repivot 시 play rate의 일관성을 위해 캐싱한다
-	PivotInitialSpeed = MaxSpeed;
-}
-
-void UMyAnimInstance::UpdatePivotState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
-{
+	PlayRate = ComputeCycleAnimPlayRate(Speed);
 }
 
 void UMyAnimInstance::SetupJumpState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node)
@@ -449,36 +534,3 @@ bool UMyAnimInstance::IsMovementWithinThresholds(float MinCurrentSpeed, float Mi
 	return MinCurrentSpeed <= Speed && MinMaxSpeed <= MaxSpeed && MinInputAcceleration <= InputVector.Length();
 }
 
-ECardinalDirection UMyAnimInstance::SelectCardinalDirectionFromAngle(float Angle, float DeadZone, ECardinalDirection CurrentDirection, bool bUseCurrentDirection)
-{
-	float AbsAngle = FMath::Abs(Angle);
-
-	float FwdDeadZone = DeadZone;
-	float BwdDeadZone = DeadZone;
-	// It should be harder to leave Fwd or Bwd.
-	if (bUseCurrentDirection)
-	{
-		if (CurrentDirection == ECardinalDirection::Forward)
-		{
-			FwdDeadZone *= 2.0f;
-		}
-		else if (CurrentDirection == ECardinalDirection::Backward)
-		{
-			BwdDeadZone *= 2.0f;
-		}
-	}
-
-	if (AbsAngle <= 45.0f + FwdDeadZone)
-	{
-		return ECardinalDirection::Forward;
-	}
-	if (AbsAngle >= 135.0f - BwdDeadZone)
-	{
-		return ECardinalDirection::Backward;
-	}
-	if (Angle > 0.0f)
-	{
-		return ECardinalDirection::Right;
-	}
-	return ECardinalDirection::Left;
-}

@@ -84,7 +84,7 @@ void UMyCombatComponent::UnequipCurrentWeapon()
 	RevokeSkillsFromWeapon(WeaponToUnequip);
 }
 
-void UMyCombatComponent::OnWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector)
+void UMyCombatComponent::OnWeaponSkillPressed(const FInputActionInstance& ActionInstance, EWeaponSkillType SkillType, const FVector2D& MovementVector, AActor* LockedTarget)
 {
 	if (CurrentWeapon && bSkillEnabled)
 	{
@@ -93,7 +93,7 @@ void UMyCombatComponent::OnWeaponSkillPressed(const FInputActionInstance& Action
 			if (UMySkillInstance* SkillInstance = FindSkillInstance(SkillData))
 			{
 				// TODO: skill batching
-				SkillInstance->TryExecuteSkill(ActionInstance, MovementVector);
+				SkillInstance->TryExecuteSkill(ActionInstance, MovementVector, LockedTarget);
 			}
 		}
 	}

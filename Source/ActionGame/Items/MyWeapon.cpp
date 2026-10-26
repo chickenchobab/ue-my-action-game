@@ -104,9 +104,19 @@ void AMyWeapon::InitWeaponForAttack(USkillInstance_Attack* Skill, const UAnimMon
 	InitHitCheckContext(SkillMontage);
 }
 
-void AMyWeapon::OnAttackBegin()
+void AMyWeapon::OnAttackBegin(int32 MontageInstanceID, bool bAdvancesAttackCombo)
 {
-	if (!bIsEquipped || !HitCheckContext.IsValid())
+	if (!bIsEquipped)
+	{
+		return;
+	}
+
+	if (USkillInstance_Attack* ActiveSkill = CurrentActiveSkill.Get())
+	{
+		ActiveSkill->RegisterPendingAttackEnd(MontageInstanceID, bAdvancesAttackCombo);
+	}
+
+	if (!HitCheckContext.IsValid())
 	{
 		return;
 	}
@@ -115,14 +125,14 @@ void AMyWeapon::OnAttackBegin()
 	HitCheckContext.OwnerMeshTransformLastFrame = HitCheckContext.OwnerMesh->GetComponentTransform();
 }
 
-void AMyWeapon::OnAttackEnd()
+void AMyWeapon::OnAttackEnd(int32 MontageInstanceID, bool bAdvancesAttackCombo)
 {
 	bIsAttacking = false;
 
 	// 인스턴스가 회수됐을 수 있으므로 유효성을 확인한다
 	if (USkillInstance_Attack* ActiveSkill = CurrentActiveSkill.Get())
 	{
-		ActiveSkill->OnAttackEnd();
+		ActiveSkill->OnAttackEnd(MontageInstanceID, bAdvancesAttackCombo);
 	}
 	CurrentActiveSkill.Reset();
 }

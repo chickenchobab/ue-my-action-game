@@ -3,6 +3,7 @@
 #include "Characters/MyPlayerCharacter.h"
 #include "Characters/MyCharacterMovementComponent.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/Controller.h"
@@ -12,6 +13,7 @@
 #include "ActionGame.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Combat/MyCombatComponent.h"
+#include "Combat/MyTargetLockComponent.h"
 #include "Skills/MySkillData.h"
 #include "Items/MyWeapon.h"
 #include "Attributes/MyStatsComponent.h"
@@ -46,6 +48,8 @@ AMyPlayerCharacter::AMyPlayerCharacter(const FObjectInitializer& ObjectInitializ
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
 
+	TargetLockComponent = CreateDefaultSubobject<UMyTargetLockComponent>(TEXT("TargetLockComponent"));
+
 	CachedWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
 }
 
@@ -59,6 +63,12 @@ void AMyPlayerCharacter::BeginPlay()
 	}
 }
 
+const FTargetLockContext& AMyPlayerCharacter::GetTargetLockContext() const
+{
+	check(TargetLockComponent);
+	return TargetLockComponent->GetTargetLockContext();
+}
+
 void AMyPlayerCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
 {
 	const bool bFellFromClimbing = PrevMovementMode == MOVE_Custom
@@ -66,6 +76,11 @@ void AMyPlayerCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, u
 		&& GetCharacterMovement()->MovementMode == MOVE_Falling;
 
 	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
+
+	if (!GetCharacterMovement()->IsFalling())
+	{
+		bIsAirborneFromJumpInput = false;
+	}
 
 	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
 	{
@@ -110,6 +125,13 @@ void AMyPlayerCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, u
 	RestoreTraversalCamera();
 }
 
+void AMyPlayerCharacter::OnJumped_Implementation()
+{
+	Super::OnJumped_Implementation();
+
+	bIsAirborneFromJumpInput = true;
+}
+
 void AMyPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	// Set up action bindings
@@ -124,6 +146,9 @@ void AMyPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMyPlayerCharacter::Move);
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &AMyPlayerCharacter::StopMove);
 		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AMyPlayerCharacter::Look);
+		
+		EnhancedInputComponent->BindAction(TargetLockAction, ETriggerEvent::Started, this, &ThisClass::ToggleTargetLock);
+
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AMyPlayerCharacter::StartSprint);
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AMyPlayerCharacter::StopSprint);
 		EnhancedInputComponent->BindAction(ClimbAction, ETriggerEvent::Triggered, this, &ThisClass::Climb);
@@ -208,7 +233,7 @@ void AMyPlayerCharacter::Climb(const FInputActionValue& Value)
 	}
 }
 
-void AMyPlayerCharacter::Look(const FInputActionValue& Value)
+void AMyPlayerCharacter::Look(const FInputActionInstance& Instance)
 {
 	if (GetStatsComponent() != nullptr)
 	{
@@ -219,10 +244,26 @@ void AMyPlayerCharacter::Look(const FInputActionValue& Value)
 	}
 
 	// input is a Vector2D
-	FVector2D LookAxisVector = Value.Get<FVector2D>();
+	FVector2D LookAxisVector = Instance.GetValue().Get<FVector2D>();
+	if (TargetLockComponent != nullptr && TargetLockComponent->IsTargetLocked())
+	{
+		if (Instance.GetSourceAction() == MouseLookAction)
+		{
+			TargetLockComponent->HandleTargetSwitchInput(LookAxisVector);
+		}
+		return;
+	}
 
 	// route the input
 	DoLook(LookAxisVector.X, LookAxisVector.Y);
+}
+
+void AMyPlayerCharacter::ToggleTargetLock()
+{
+	if (TargetLockComponent != nullptr)
+	{
+		TargetLockComponent->ToggleTargetLock();
+	}
 }
 
 void AMyPlayerCharacter::QuitGame(const FInputActionValue& Value)
@@ -272,7 +313,9 @@ void AMyPlayerCharacter::HandleWeaponSkillPressed(const FInputActionInstance& Ac
 {
 	if (UMyCombatComponent* CombatComp = GetCombatComponent())
 	{
-		CombatComp->OnWeaponSkillPressed(ActionInstance, SkillType, CachedMovementVector);
+		const FTargetLockContext& TargetLockContext = GetTargetLockContext();
+		AActor* LockedTarget = TargetLockContext.bIsTargetLocked ? TargetLockContext.LockedTarget.Get() : nullptr;
+		CombatComp->OnWeaponSkillPressed(ActionInstance, SkillType, CachedMovementVector, LockedTarget);
 	}
 }
 

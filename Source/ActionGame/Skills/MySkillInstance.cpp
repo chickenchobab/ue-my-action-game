@@ -50,7 +50,7 @@ void UMySkillInstance::Deinitialize()
 	bInitialized = false;
 }
 
-void UMySkillInstance::TryExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector)
+void UMySkillInstance::TryExecuteSkill(const FInputActionInstance& Instance, const FVector2D& MovementVector, AActor* LockedTarget)
 {
 	if (!bInitialized || !SkillData || !AvatarActor.IsValid())
 	{
@@ -63,7 +63,7 @@ void UMySkillInstance::TryExecuteSkill(const FInputActionInstance& Instance, con
 		// 콤보 montage 교체 중 이전 종료 콜백이 와도 기존 카운트 관계를 유지한다.
 		const uint32 ActiveCountBeforeExecution = ActiveCount;
 		++ActiveCount;
-		if (!ExecuteSkill(Instance, MovementVector))
+		if (!ExecuteSkill(Instance, MovementVector, LockedTarget))
 		{
 			ActiveCount = ActiveCountBeforeExecution;
 			return;
@@ -179,14 +179,30 @@ bool UMySkillInstance::PlaySkillMontage()
 		return false;
 	}
 
-	UAnimMontage* SkillMontage = SkillData->SkillMontages[CurrentMontageIndex];
+	return PlaySkillMontage(SkillData->SkillMontages[CurrentMontageIndex]);
+}
+
+bool UMySkillInstance::PlaySkillMontage(UAnimMontage* SkillMontage)
+{
 	UAnimInstance* AnimInstance = GetAnimInstanceFromAvatarActor();
 	if (!AnimInstance || !SkillMontage || AnimInstance->Montage_Play(SkillMontage) <= 0.0f)
 	{
 		return false;
 	}
 
-	FOnMontageEnded EndDelegate = FOnMontageEnded::CreateUObject(this, &ThisClass::OnSkillMontageEnded);
+	FAnimMontageInstance* MontageInstance = AnimInstance->GetActiveInstanceForMontage(SkillMontage);
+	if (!MontageInstance)
+	{
+		AnimInstance->Montage_Stop(0.0f, SkillMontage);
+		return false;
+	}
+
+	const int32 MontageInstanceID = MontageInstance->GetInstanceID();
+	FOnMontageEnded EndDelegate = FOnMontageEnded::CreateUObject(
+		this,
+		&ThisClass::OnSkillMontageEnded,
+		MontageInstanceID
+	);
 	AnimInstance->Montage_SetEndDelegate(EndDelegate, SkillMontage);
 
 	FOnMontageBlendingOutStarted BlendOutDelegate = FOnMontageBlendingOutStarted::CreateUObject(this, &ThisClass::OnSkillMontageBlendingOutStarted);

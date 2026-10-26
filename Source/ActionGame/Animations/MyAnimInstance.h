@@ -7,6 +7,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Animation/CachedAnimData.h"
 #include "Characters/MyCharacterMovementComponent.h"
+#include "Combat/MyTargetLockTypes.h"
 #include "MyAnimInstance.generated.h"
 
 class AMyCharacter;
@@ -15,15 +16,6 @@ struct FAnimInstanceProxy;
 struct FAnimUpdateContext;
 struct FAnimNodeReference;
 enum class EMyCustomMovementMode : uint8;
-
-UENUM(BlueprintType)
-enum class ECardinalDirection : uint8
-{
-	Forward,
-	Backward,
-	Left,
-	Right
-};
 
 UENUM(BlueprintType)
 enum class ELocomotionState : uint8
@@ -72,12 +64,7 @@ public:
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bHasVelocity = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	bool bWasMovingLastUpdate = false;
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float PlayRate;
-
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	float CardinalDirectionDeadZone = 10.0f;
 
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	FVector WorldAcceleration;
@@ -87,8 +74,6 @@ public:
 	float GroundFriction;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float VelocityAccelDot = 0.0f;
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	float ForwardAccelDot = 0.0f;
 	bool bAccelDotReversed = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bHasOppositeAccel = false;
@@ -106,13 +91,7 @@ public:
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bIsJumping = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	float TimeToJumpApex = 0.0f;
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	float GravityZ = 0.0f;
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float MaxJumpHeight = 0.0f;
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	float TimeToLand = 0.0f;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float GroundDistance = 0.0f;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
@@ -138,20 +117,19 @@ public:
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	FRotator WorldRotation;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	FVector Forward;
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float YawDelta;
 
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	ELocomotionState LocomotionState = ELocomotionState::Idle;
 	// Pivot -> Walk/Run 이탈 시 회전 타겟을 리셋하지 않기 위해 필요하다
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	ELocomotionState LocomotionStateLastUpdate = ELocomotionState::Idle;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	float WalkStartAngle;
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	float RunStartAngle;
+	float StartAngle = 0.0f;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bNeedsStartState = true;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	bool bNeedsStopState = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	FVector InputVector;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
@@ -164,6 +142,13 @@ public:
 	float SecondaryRotationInterpSpeed = 10.0f;
 
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	FTargetLockContext TargetLockContext;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	float TargetLockTurnInPlaceAngle = 0.0f;
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
+	float TargetLockTurnInPlaceStateWeight = 0.0f;
+
+	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bIsRunning = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bHasRootMotion = false;
@@ -171,14 +156,12 @@ public:
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float PivotAngle = 0.0f;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	float PivotInitialSpeed = 0.f;
+	float CurrentPivotStateWeight = 0.0f;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bPivotExitNotified = false;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	bool bShouldRepivot = false;
 
-	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
-	float IdleStateWeight;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
 	float WalkStateWeight;
 	UPROPERTY(Transient, VisibleDefaultsOnly, BlueprintReadOnly)
@@ -189,17 +172,14 @@ protected:
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
 	void SetupIdleState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
-	void UpdateIdleState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	void SetupWalkState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
+	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
+	void SetupRunState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
 
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
 	void UpdateWalkState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
 	void UpdateRunState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
-
-	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
-	void SetupPivotState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
-	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
-	void UpdatePivotState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
 
 	UFUNCTION(BlueprintCallable, meta = (BlueprintThreadSafe))
 	void SetupJumpState(const FAnimUpdateContext& Context, const FAnimNodeReference& Node);
@@ -215,15 +195,16 @@ public:
 	float ComputeCycleAnimPlayRate(float CharacterSpeed) const;
 
 	void SetupPivotValues();
+	bool CanUseTargetLockTurnInPlace() const;
+	void SetupTargetLockTurnInPlaceValues(float SignedTurnAngle);
 
 private:
 
 	bool bIsFirstUpdate;
+	bool bWasTargetLocked = false;
 
 	FVector LocationLastUpdate;
 	FRotator RotationLastUpdate;
-
-	float VelocityAccelDotLastUpdate = 0.0f;
 
 	FORCEINLINE void UpdateLocationData(float DeltaSeconds);
 	FORCEINLINE void UpdateRotationData(float DeltaSeconds);
@@ -232,17 +213,15 @@ private:
 	FORCEINLINE void UpdateJumpFallData(float DeltaSeconds);
 	FORCEINLINE void DetermineLocomotionState();
 	FORCEINLINE void SetupMoveState();
-	FORCEINLINE void UpdateLocomotionValues();
 	FORCEINLINE void UpdateCharacterRotation();
+	FORCEINLINE float CalculateCurveRotationYaw();
 
 	FORCEINLINE bool CanEnterPivot() const;
 	FORCEINLINE bool ShouldExitPivot() const;
 
 	FORCEINLINE bool IsMovementWithinThresholds(float MinCurrentSpeed, float MinMaxSpeed, float MinInputAcceleration) const;
-	FORCEINLINE ECardinalDirection SelectCardinalDirectionFromAngle(float Angle, float DeadZone, ECardinalDirection CurrentDirection, bool bUseCurrentDirection);
 	
 	FCachedAnimStateData LocomotionStateData;
 	FCachedAnimStateData WalkStateData;
 	FCachedAnimStateData RunStateData;
-	FCachedAnimStateData PivotStateData;
 };
